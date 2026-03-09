@@ -414,7 +414,9 @@
             if (indicator) indicator.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
 
             try {
-                const response = await fetch('/api/data');
+                const apiUrl = `${window.location.origin}/api/data?t=${Date.now()}`;
+                console.log("Calling API:", apiUrl);
+                const response = await fetch(apiUrl);
                 const contentType = response.headers.get("content-type");
                 
                 let data;
@@ -422,7 +424,8 @@
                     data = await response.json();
                 } else {
                     const text = await response.text();
-                    throw new Error("Resposta inválida do servidor: " + text.substring(0, 50));
+                    console.error("Invalid response body:", text);
+                    throw new Error("Resposta inválida do servidor (HTML recebido em vez de JSON). Verifique se o backend está rodando.");
                 }
 
                 if (response.ok) {
@@ -461,7 +464,8 @@
             if (indicator) indicator.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
 
             try {
-                const response = await fetch('/api/data', {
+                const apiUrl = `${window.location.origin}/api/data`;
+                const response = await fetch(apiUrl, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ players, finances })
@@ -473,7 +477,8 @@
                     data = await response.json();
                 } else {
                     const text = await response.text();
-                    throw new Error("Resposta inválida ao salvar: " + text.substring(0, 50));
+                    console.error("Invalid response body on save:", text);
+                    throw new Error("Erro ao salvar: O servidor retornou HTML em vez de JSON.");
                 }
 
                 if (response.ok) {
