@@ -13,10 +13,18 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Logging middleware for ALL requests
+  app.use((req, res, next) => {
+    console.log(`[SERVER] ${req.method} ${req.url}`);
+    next();
+  });
+
   app.use(express.json({ limit: '10mb' }));
 
-  // Logging middleware for API
-  app.use("/api", (req, res, next) => {
+  const apiRouter = express.Router();
+
+  // API Logging
+  apiRouter.use((req, res, next) => {
     console.log(`[API] ${req.method} ${req.path}`);
     next();
   });
@@ -126,16 +134,20 @@ async function startServer() {
     }
   };
 
-  app.get("/api/data", handleGetData);
-  app.get("/api/data/", handleGetData);
-  app.put("/api/data", handlePutData);
-  app.put("/api/data/", handlePutData);
+  // Mount routes to Router
+  apiRouter.get("/ping", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
+  apiRouter.get("/test", (req, res) => res.json({ message: "API is working!" }));
+  apiRouter.get("/data", handleGetData);
+  apiRouter.put("/data", handlePutData);
 
-  // Catch-all for API routes that don't match
-  app.all("/api/*", (req, res) => {
-    console.warn(`[API] 404 - Route not found: ${req.method} ${req.path}`);
+  // Catch-all for API Router
+  apiRouter.all("*", (req, res) => {
+    console.warn(`[API Router] 404 - Not Found: ${req.method} ${req.path}`);
     res.status(404).json({ error: "API Route not found", path: req.path });
   });
+
+  // Mount API Router to App
+  app.use("/api", apiRouter);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
