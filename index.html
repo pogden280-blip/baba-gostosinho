@@ -3,995 +3,572 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Baba gostosinho - Organizador de Baba</title>
+    <title>Baba Gostosinho</title>
+    <!-- Tailwind CSS 3 CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- React & ReactDOM CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .star-active { color: #fbbf24; fill: #fbbf24; }
-        .star-inactive { color: #d1d5db; fill: none; }
-        .hide-nav nav { display: none; }
-        .hide-nav header { display: none; }
-        
-        /* View Mode (Player) Styles */
-        .view-mode .admin-only { display: none !important; }
-
-        /* Background Logo Container */
-        #home-selection {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image: url('https://image2url.com/r2/default/images/1773069462364-21238cdb-2ba8-4949-b313-b74d3a6466ec.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            z-index: 0;
-        }
+        .star-rating button { transition: transform 0.1s; }
+        .star-rating button:active { transform: scale(0.9); }
     </style>
 </head>
-<body class="bg-zinc-50 text-zinc-900 min-h-screen pb-24 hide-nav">
+<body class="bg-zinc-50 text-zinc-900">
+    <div id="root"></div>
 
-    <!-- Header -->
-    <header class="bg-white border-b border-zinc-200 sticky top-0 z-10">
-        <div class="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <button onclick="exitToSelection()" class="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                </button>
-            </div>
-            <button onclick="shareMatch()" class="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-600">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
-            </button>
-        </div>
-    </header>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-    <main class="max-w-md mx-auto px-4 py-6">
-        
-        <!-- Tab: Home -->
-        <div id="tab-home" class="tab-content active">
-            <!-- Selection Screen -->
-            <div id="home-selection" class="flex flex-col items-center justify-end px-8 pb-20">
-                <div class="flex gap-4 w-full relative z-10 max-w-md">
-                    <button onclick="openAdmin()" class="flex-1 bg-emerald-600/80 backdrop-blur-md hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-[0_6px_0_rgb(5,120,85)] transition-all active:shadow-none active:translate-y-[6px] flex flex-col items-center justify-center gap-2 border border-white/20">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
-                        <span class="text-xs tracking-widest">COMISSÃO</span>
-                    </button>
-                    <button onclick="openPlayer()" class="flex-1 bg-yellow-400/80 backdrop-blur-md hover:bg-yellow-400 text-yellow-950 font-bold py-4 rounded-2xl shadow-[0_6px_0_rgb(202,138,4)] transition-all active:shadow-none active:translate-y-[6px] flex flex-col items-center justify-center gap-2 border border-yellow-300/30">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        <span class="text-xs tracking-widest">JOGADOR</span>
-                    </button>
-                </div>
-            </div>
+        // Configurações do JSONbin
+        const BIN_ID = '69af06d2ae596e708f71a0ef';
+        const MASTER_KEY = '$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi';
+        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
-            <!-- Admin Panel (Inside Home Tab) -->
-            <div id="home-admin-panel" class="hidden space-y-6">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-2xl font-black tracking-tight text-zinc-900">Painel ADM</h2>
-                    <button onclick="closeAdmin()" class="text-sm font-bold text-zinc-400 hover:text-zinc-600 flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                        Voltar
-                    </button>
-                </div>
-
-                <!-- Admin Sub-tabs -->
-                <div class="flex bg-zinc-200/50 p-1 rounded-xl">
-                    <button onclick="switchAdminSubTab('finance')" id="sub-nav-finance" class="admin-sub-btn flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white shadow-sm text-emerald-600">FINANCEIRO</button>
-                    <button onclick="switchAdminSubTab('members')" id="sub-nav-members" class="admin-sub-btn flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-500">MEMBROS</button>
-                    <button onclick="switchAdminSubTab('draw')" id="sub-nav-draw" class="admin-sub-btn flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-500">SORTEIO</button>
-                    <button onclick="switchAdminSubTab('list')" id="sub-nav-list" class="admin-sub-btn flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-500">LISTA</button>
-                </div>
-
-                <!-- Sync Status Indicator -->
-                <div class="flex items-center justify-between px-2 py-1 bg-zinc-100 rounded-lg border border-zinc-200">
-                    <div class="flex items-center gap-2">
-                        <div id="sync-indicator" class="w-2 h-2 rounded-full bg-zinc-300"></div>
-                        <span id="sync-status" class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Verificando nuvem...</span>
-                    </div>
-                    <button onclick="loadFromCloud()" class="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-wider flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                        Atualizar
-                    </button>
-                    <button onclick="testApi()" class="text-[10px] font-bold text-zinc-400 hover:text-zinc-600 uppercase tracking-wider ml-2">Testar API</button>
-                </div>
-
-                <!-- Admin Sections -->
-                <div id="admin-finance" class="admin-section space-y-6">
-                    <div class="bg-emerald-600 p-6 rounded-3xl text-white shadow-lg shadow-emerald-600/20">
-                        <p class="text-xs font-bold uppercase tracking-widest opacity-80">Saldo Total</p>
-                        <p class="text-4xl font-black" id="total-balance">R$ 0,00</p>
-                    </div>
-
-                    <section class="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
-                        <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                            Nova Transação
-                        </h3>
-                        <div class="space-y-3">
-                            <input type="text" id="finance-desc" placeholder="Descrição (ex: Aluguel Quadra)" class="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
-                            <div class="flex gap-2">
-                                <input type="number" id="finance-amount" placeholder="Valor (R$)" class="flex-1 px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
-                                <select id="finance-type" class="px-4 py-3 rounded-xl border border-zinc-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
-                                    <option value="income">Receita</option>
-                                    <option value="expense">Despesa</option>
-                                </select>
-                            </div>
-                            <button onclick="addFinanceEntry()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition-all shadow-md shadow-emerald-600/10 active:scale-[0.98]">
-                                Lançar Transação
-                            </button>
-                        </div>
-                    </section>
-
-                    <div id="finance-list" class="space-y-2">
-                        <!-- Finance entries will be injected here -->
-                    </div>
-                </div>
-
-                <div id="admin-members" class="admin-section hidden space-y-6">
-                    <section class="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
-                        <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
-                            Adicionar Novo Membro
-                        </h3>
-                        <div class="space-y-4">
-                            <input type="text" id="player-name" placeholder="Nome do craque..." class="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
-                            
-                            <div class="flex gap-2">
-                                <select id="player-type" class="flex-1 px-4 py-3 rounded-xl border border-zinc-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-sm font-medium">
-                                    <option value="mensal">Mensalista</option>
-                                    <option value="diarista">Diarista</option>
-                                </select>
-                                <div class="flex-1 flex items-center justify-between bg-zinc-50 px-3 py-2 rounded-xl border border-zinc-100">
-                                    <span class="text-[10px] text-zinc-400 font-bold uppercase">Nível:</span>
-                                    <div class="flex gap-0.5" id="star-rating">
-                                        <button onclick="setRating(1)" class="star-btn p-0.5 text-amber-400" data-value="1"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
-                                        <button onclick="setRating(2)" class="star-btn p-0.5 text-amber-400" data-value="2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
-                                        <button onclick="setRating(3)" class="star-btn p-0.5 text-amber-400" data-value="3"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
-                                        <button onclick="setRating(4)" class="star-btn p-0.5 text-zinc-300" data-value="4"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
-                                        <button onclick="setRating(5)" class="star-btn p-0.5 text-zinc-300" data-value="5"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
-                                    </div>
-                                </div>
-                            </div>
-                            <button onclick="addPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition-all shadow-md shadow-emerald-600/10 active:scale-[0.98]">
-                                Confirmar Cadastro
-                            </button>
-                        </div>
-                    </section>
-
-                    <div id="players-list" class="space-y-2">
-                        <!-- Players will be injected here -->
-                    </div>
-                </div>
-
-                <div id="admin-draw" class="admin-section hidden space-y-6">
-                    <div class="bg-white p-8 rounded-3xl border border-zinc-200 text-center space-y-6">
-                        <div class="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto text-zinc-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" x2="21" y1="20" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" x2="21" y1="15" y2="21"/><line x1="4" x2="9" y1="4" y2="9"/></svg>
-                        </div>
-                        <div class="space-y-2">
-                            <h3 class="text-xl font-bold text-zinc-900">Sorteio de Times</h3>
-                            <p class="text-sm text-zinc-500">O sistema irá equilibrar os times automaticamente com base no nível técnico dos membros cadastrados.</p>
-                        </div>
-                        <div class="bg-zinc-50 p-4 rounded-2xl border border-zinc-100 flex justify-between items-center">
-                            <span class="text-sm font-bold text-zinc-600">Membros Ativos:</span>
-                            <span class="text-xl font-black text-emerald-600" id="draw-player-count">0</span>
-                        </div>
-                        <button onclick="generateTeams()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-5 rounded-2xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95">
-                            REALIZAR SORTEIO
-                        </button>
-                    </div>
-                </div>
-
-                <div id="admin-list" class="admin-section hidden space-y-6">
-                    <div class="bg-white p-6 rounded-3xl border border-zinc-200 space-y-6">
-                        <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                            </div>
-                            <div>
-                                <h3 class="font-bold text-zinc-900">Lista WhatsApp</h3>
-                                <p class="text-xs text-zinc-500">Gere a lista para o grupo oficial.</p>
-                            </div>
-                        </div>
-
-                        <div class="bg-zinc-50 p-4 rounded-2xl border border-zinc-100 space-y-2">
-                            <label class="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data do Baba</label>
-                            <input type="text" id="match-date" value="14/03 - Sábado" class="w-full bg-transparent border-none p-0 font-bold text-zinc-800 focus:ring-0">
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-3">
-                            <button onclick="copyWhatsAppList()" class="flex-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                                Copiar
-                            </button>
-                            <button onclick="sendWhatsAppList()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-                                Enviar
-                            </button>
-                        </div>
-
-                        <div class="p-4 bg-zinc-900 rounded-2xl text-[10px] font-mono text-zinc-400 overflow-y-auto max-h-48 whitespace-pre-wrap" id="list-preview">
-                            <!-- Preview will be here -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tab: Finance (Read-only for Players) -->
-        <div id="tab-finance" class="tab-content space-y-6">
-            <div class="flex items-center justify-between">
-                <h2 class="text-2xl font-black tracking-tight text-zinc-900">Financeiro</h2>
-                <button onclick="exitToSelection()" class="text-sm font-bold text-zinc-400 hover:text-zinc-600 flex items-center gap-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                    Voltar
-                </button>
-            </div>
-            
-            <div class="bg-emerald-600 p-6 rounded-3xl text-white shadow-lg shadow-emerald-600/20">
-                <p class="text-xs font-bold uppercase tracking-widest opacity-80">Saldo em Caixa</p>
-                <p class="text-4xl font-black" id="player-total-balance">R$ 0,00</p>
-            </div>
-
-            <div id="player-finance-list" class="space-y-2">
-                <!-- Finance entries will be injected here -->
-            </div>
-        </div>
-
-        <!-- Tab: Times -->
-        <div id="tab-teams" class="tab-content space-y-6">
-            <div class="flex items-center justify-between mb-2">
-                <button onclick="exitToSelection()" class="text-sm font-medium text-zinc-500 flex items-center gap-1 hover:text-zinc-800 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                    Voltar
-                </button>
-                <button onclick="generateTeams()" class="admin-only text-sm font-medium text-emerald-600 flex items-center gap-1 hover:text-emerald-700 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" x2="21" y1="20" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" x2="21" y1="15" y2="21"/><line x1="4" x2="9" y1="4" y2="9"/></svg>
-                    Sortear Novamente
-                </button>
-            </div>
-
-            <div class="grid grid-cols-1 gap-4">
-                <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-                    <div class="bg-emerald-600 px-4 py-3 text-white flex justify-between items-center">
-                        <h3 class="font-bold">Time A</h3>
-                        <span id="avg-a" class="text-xs bg-white/20 px-2 py-0.5 rounded-full">Média: 0.0</span>
-                    </div>
-                    <div id="team-a-list" class="p-4 space-y-2"></div>
-                </div>
-
-                <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-                    <div class="bg-zinc-800 px-4 py-3 text-white flex justify-between items-center">
-                        <h3 class="font-bold">Time B</h3>
-                        <span id="avg-b" class="text-xs bg-white/20 px-2 py-0.5 rounded-full">Média: 0.0</span>
-                    </div>
-                    <div id="team-b-list" class="p-4 space-y-2"></div>
-                </div>
-            </div>
-
-            <button onclick="startMatch()" class="admin-only w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
-                Começar Partida 
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-        </div>
-
-        <!-- Tab: Partida -->
-        <div id="tab-match" class="tab-content space-y-8">
-            <div class="text-center space-y-2">
-                <div class="inline-flex items-center gap-2 bg-zinc-100 px-4 py-2 rounded-full text-zinc-600 font-mono text-xl font-bold">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span id="timer-display">00:00</span>
-                </div>
-                <div class="admin-only flex justify-center gap-4 mt-4">
-                    <button id="btn-timer-toggle" onclick="toggleTimer()" class="w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform active:scale-90 bg-emerald-600">
-                        <svg id="timer-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                    </button>
-                    <button onclick="resetTimer()" class="w-14 h-14 rounded-full bg-zinc-200 text-zinc-600 flex items-center justify-center transition-transform active:scale-90">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                    </button>
-                </div>
-            </div>
-
-            <div class="flex items-center justify-between gap-4">
-                <div class="flex-1 bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm text-center space-y-4">
-                    <p class="text-xs font-bold uppercase tracking-widest text-emerald-600">Time A</p>
-                    <p id="score-a" class="text-6xl font-black text-zinc-900">0</p>
-                    <div class="admin-only flex justify-center gap-2">
-                        <button onclick="updateScore('a', -1)" class="p-2 bg-zinc-100 rounded-xl text-zinc-500 hover:bg-zinc-200 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" x2="19" y1="12" y2="12"/></svg>
-                        </button>
-                        <button onclick="updateScore('a', 1)" class="p-2 bg-emerald-100 rounded-xl text-emerald-600 hover:bg-emerald-200 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="text-zinc-300 font-black text-2xl italic">VS</div>
-
-                <div class="flex-1 bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm text-center space-y-4">
-                    <p class="text-xs font-bold uppercase tracking-widest text-zinc-800">Time B</p>
-                    <p id="score-b" class="text-6xl font-black text-zinc-900">0</p>
-                    <div class="admin-only flex justify-center gap-2">
-                        <button onclick="updateScore('b', -1)" class="p-2 bg-zinc-100 rounded-xl text-zinc-500 hover:bg-zinc-200 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" x2="19" y1="12" y2="12"/></svg>
-                        </button>
-                        <button onclick="updateScore('b', 1)" class="p-2 bg-zinc-800 rounded-xl text-white hover:bg-zinc-700 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="pt-4">
-                <button onclick="switchTab('teams')" class="w-full py-3 text-sm font-semibold text-zinc-400 hover:text-zinc-600 transition-colors">
-                    Encerrar Partida
-                </button>
-            </div>
-        </div>
-    </main>
-
-    <!-- Bottom Navigation -->
-    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 px-4 py-3 z-10">
-        <div class="max-w-md mx-auto flex justify-around items-center">
-            <button onclick="handleNavAdmin()" id="nav-admin" class="nav-btn flex flex-col items-center gap-1 transition-colors text-zinc-400">
-                <div id="nav-admin-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
-                </div>
-                <span id="nav-admin-label" class="text-[10px] font-bold uppercase">Comissão</span>
-            </button>
-            <button onclick="switchTab('teams')" id="nav-teams" class="nav-btn flex flex-col items-center gap-1 transition-colors text-zinc-400">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" x2="21" y1="20" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" x2="21" y1="15" y2="21"/><line x1="4" x2="9" y1="4" y2="9"/></svg>
-                <span class="text-[10px] font-bold uppercase">Times</span>
-            </button>
-            <button onclick="switchTab('match')" id="nav-match" class="nav-btn flex flex-col items-center gap-1 transition-colors text-zinc-400">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
-                <span class="text-[10px] font-bold uppercase">Partida</span>
-            </button>
-        </div>
-    </nav>
-
-    <!-- Password Modal -->
-    <div id="password-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 hidden">
-        <div class="bg-white w-full max-w-xs rounded-3xl p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in duration-300">
-            <div class="text-center space-y-2">
-                <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                </div>
-                <h3 class="text-xl font-black text-zinc-900">Acesso Restrito</h3>
-                <p class="text-sm text-zinc-500 font-medium">Digite a senha da Comissão</p>
-            </div>
-            
-            <div class="space-y-4">
-                <input type="password" id="admin-password-input" placeholder="••••••••" class="w-full px-4 py-4 rounded-2xl border-2 border-zinc-100 focus:border-emerald-500 focus:outline-none text-center text-2xl tracking-widest font-mono transition-all">
-                
-                <div class="flex gap-3">
-                    <button onclick="closePasswordModal()" class="flex-1 py-4 rounded-2xl font-bold text-zinc-400 hover:bg-zinc-50 transition-colors">Cancelar</button>
-                    <button onclick="checkAdminPassword()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-emerald-600/20 active:scale-95 transition-all">Entrar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // State
-        let players = JSON.parse(localStorage.getItem('futamigos_players')) || [];
-        let finances = JSON.parse(localStorage.getItem('futamigos_finances')) || [];
-        let currentUser = localStorage.getItem('futamigos_current_user') || null;
-        let currentRating = 3;
-        let teamA = { players: [], score: 0 };
-        let teamB = { players: [], score: 0 };
-        let timerSeconds = 0;
-        let timerInterval = null;
-
-        // Icons for stars
-        const starFull = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
-        const starEmpty = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
-
-        // Nav Icons
-        const iconHome = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
-        const iconFinance = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>';
-        const iconAdmin = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>';
-
-        // Initialize
-        loadFromCloud();
-        renderPlayers();
-        renderFinances();
-
-        // Auto-poll cloud every 30 seconds
-        setInterval(() => {
-            if (!document.hidden) {
-                loadFromCloud();
-            }
-        }, 30000);
-
-        async function testApi() {
-            try {
-                const url = `${window.location.origin}/api/test`;
-                console.log("Testing API at:", url);
-                const res = await fetch(url);
-                const backendHeader = res.headers.get("X-Backend-Server");
-                const text = await res.text();
-                console.log("Status:", res.status);
-                console.log("Raw Response:", text);
-                console.log("Backend Header:", backendHeader);
-                try {
-                    const data = JSON.parse(text);
-                    alert(`API Test Success!\nStatus: ${res.status}\nServer: ${backendHeader || "Unknown"}\nData: ${JSON.stringify(data)}`);
-                } catch (e) {
-                    alert(`API Test Failed (Not JSON).\nStatus: ${res.status}\nServer: ${backendHeader || "Unknown"}\nResponse starts with: ${text.substring(0, 100)}`);
+        // Componente de Ícone Lucide (Wrapper para CDN)
+        const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (iconRef.current) {
+                    lucide.createIcons({
+                        attrs: {
+                            size,
+                            class: className,
+                            fill
+                        },
+                        nameAttr: 'data-lucide'
+                    });
                 }
-            } catch (e) {
-                alert("API Test Failed (Network/Other): " + e.message);
-            }
-        }
+            }, [name, size, className, fill]);
+            return <i data-lucide={name} ref={iconRef} className={className}></i>;
+        };
 
-        async function loadFromCloud() {
-            const statusText = document.getElementById('sync-status');
-            const indicator = document.getElementById('sync-indicator');
+        function App() {
+            const [players, setPlayers] = useState([]);
+            const [finances, setFinances] = useState([]);
+            const [currentUser, setCurrentUser] = useState(localStorage.getItem('futamigos_current_user'));
+            const [currentTab, setCurrentTab] = useState('home');
+            const [adminSubTab, setAdminSubTab] = useState('finance');
+            const [isAdminMode, setIsAdminMode] = useState(false);
+            const [isViewMode, setIsViewMode] = useState(false);
+            const [showPasswordModal, setShowPasswordModal] = useState(false);
+            const [passwordInput, setPasswordInput] = useState('');
+            const [isLoading, setIsLoading] = useState(true);
             
-            if (statusText) statusText.innerText = "Sincronizando...";
-            if (indicator) indicator.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+            // Form States
+            const [newPlayerName, setNewPlayerName] = useState('');
+            const [newPlayerRating, setNewPlayerRating] = useState(3);
+            const [financeDesc, setFinanceDesc] = useState('');
+            const [financeAmount, setFinanceAmount] = useState('');
+            const [financeType, setFinanceType] = useState('income');
 
-            try {
-                const apiUrl = `${window.location.origin}/api/data?t=${Date.now()}`;
-                console.log("Calling API:", apiUrl);
-                const response = await fetch(apiUrl);
-                console.log("Response Status:", response.status);
-                console.log("Response Headers:", Object.fromEntries(response.headers.entries()));
-                const contentType = response.headers.get("content-type");
-                
-                let data;
-                if (contentType && contentType.includes("application/json")) {
-                    data = await response.json();
-                } else {
-                    const text = await response.text();
-                    console.error("Invalid response body:", text);
-                    throw new Error("Resposta inválida do servidor (HTML recebido em vez de JSON). Verifique se o backend está rodando.");
-                }
+            // Match States
+            const [teamA, setTeamA] = useState({ players: [], score: 0 });
+            const [teamB, setTeamB] = useState({ players: [], score: 0 });
+            const [timerSeconds, setTimerSeconds] = useState(0);
+            const [isTimerRunning, setIsTimerRunning] = useState(false);
+            const timerRef = useRef(null);
 
-                if (response.ok) {
-                    // Só atualiza se houver dados válidos
-                    if (data && (data.players || data.finances)) {
-                        players = data.players || [];
-                        finances = data.finances || [];
-                        
-                        localStorage.setItem('futamigos_players', JSON.stringify(players));
-                        localStorage.setItem('futamigos_finances', JSON.stringify(finances));
-                        
-                        renderPlayers();
-                        renderFinances();
-                        
-                        if (statusText) statusText.innerText = "Nuvem Conectada";
-                        if (indicator) indicator.className = "w-2 h-2 rounded-full bg-emerald-500";
-                    } else {
-                        if (statusText) statusText.innerText = "Nuvem Vazia";
-                        if (indicator) indicator.className = "w-2 h-2 rounded-full bg-zinc-400";
+            // Carregar dados do JSONbin
+            useEffect(() => {
+                const fetchData = async () => {
+                    try {
+                        const response = await fetch(API_URL, {
+                            headers: { 'X-Master-Key': MASTER_KEY }
+                        });
+                        if (response.ok) {
+                            const data = await response.json();
+                            setPlayers(data.record.players || []);
+                            setFinances(data.record.finances || []);
+                        }
+                    } catch (error) {
+                        console.error("Erro ao carregar dados:", error);
+                    } finally {
+                        setIsLoading(false);
                     }
-                } else {
-                    throw new Error(data.error || "Erro na resposta do servidor");
+                };
+                fetchData();
+            }, []);
+
+            // Salvar dados no JSONbin
+            const saveData = async (newPlayers, newFinances) => {
+                try {
+                    await fetch(API_URL, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Master-Key': MASTER_KEY
+                        },
+                        body: JSON.stringify({ players: newPlayers, finances: newFinances })
+                    });
+                } catch (error) {
+                    console.error("Erro ao salvar dados:", error);
                 }
-            } catch (error) {
-                console.error("Erro ao carregar dados da nuvem:", error);
-                if (statusText) statusText.innerText = "Erro: " + error.message;
-                if (indicator) indicator.className = "w-2 h-2 rounded-full bg-red-500";
-            }
-        }
+            };
 
-        async function syncWithCloud() {
-            const statusText = document.getElementById('sync-status');
-            const indicator = document.getElementById('sync-indicator');
-            
-            if (statusText) statusText.innerText = "Salvando...";
-            if (indicator) indicator.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+            // Timer Logic
+            useEffect(() => {
+                if (isTimerRunning) {
+                    timerRef.current = setInterval(() => {
+                        setTimerSeconds(s => s + 1);
+                    }, 1000);
+                } else {
+                    if (timerRef.current) clearInterval(timerRef.current);
+                }
+                return () => {
+                    if (timerRef.current) clearInterval(timerRef.current);
+                };
+            }, [isTimerRunning]);
 
-            try {
-                const apiUrl = `${window.location.origin}/api/data`;
-                const response = await fetch(apiUrl, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ players, finances })
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const secs = (seconds % 60).toString().padStart(2, '0');
+                return `${mins}:${secs}`;
+            };
+
+            const handleAdminAuth = () => {
+                const authorizedPasswords = ["Dan2620", "Davi2168"];
+                if (authorizedPasswords.includes(passwordInput)) {
+                    setCurrentUser(passwordInput);
+                    localStorage.setItem('futamigos_current_user', passwordInput);
+                    setIsAdminMode(true);
+                    setIsViewMode(false);
+                    setShowPasswordModal(false);
+                    setCurrentTab('home');
+                    setPasswordInput('');
+                } else {
+                    alert("Senha incorreta! Acesso negado.");
+                }
+            };
+
+            const addPlayer = () => {
+                if (!newPlayerName.trim()) return;
+                const newPlayer = {
+                    id: Date.now().toString(),
+                    name: newPlayerName.trim(),
+                    level: newPlayerRating,
+                    author: currentUser
+                };
+                const updatedPlayers = [...players, newPlayer];
+                setPlayers(updatedPlayers);
+                saveData(updatedPlayers, finances);
+                setNewPlayerName('');
+                setNewPlayerRating(3);
+            };
+
+            const removePlayer = (id) => {
+                const updatedPlayers = players.filter(p => p.id !== id);
+                setPlayers(updatedPlayers);
+                saveData(updatedPlayers, finances);
+            };
+
+            const addFinanceEntry = () => {
+                const amount = parseFloat(financeAmount);
+                if (!financeDesc.trim() || isNaN(amount)) return;
+                const entry = {
+                    id: Date.now().toString(),
+                    description: financeDesc.trim(),
+                    amount: amount,
+                    type: financeType,
+                    date: new Date().toLocaleDateString('pt-BR'),
+                    author: currentUser
+                };
+                const updatedFinances = [...finances, entry];
+                setFinances(updatedFinances);
+                saveData(players, updatedFinances);
+                setFinanceDesc('');
+                setFinanceAmount('');
+            };
+
+            const removeFinanceEntry = (id) => {
+                const updatedFinances = finances.filter(f => f.id !== id);
+                setFinances(updatedFinances);
+                saveData(players, updatedFinances);
+            };
+
+            const generateTeams = () => {
+                if (players.length < 2) return;
+                const sorted = [...players].sort((a, b) => b.level - a.level);
+                const a = [];
+                const b = [];
+                sorted.forEach((p, i) => {
+                    if (i % 2 === 0) a.push(p);
+                    else b.push(p);
                 });
-                
-                const contentType = response.headers.get("content-type");
-                let data;
-                if (contentType && contentType.includes("application/json")) {
-                    data = await response.json();
-                } else {
-                    const text = await response.text();
-                    console.error("Invalid response body on save:", text);
-                    throw new Error("Erro ao salvar: O servidor retornou HTML em vez de JSON.");
-                }
-
-                if (response.ok) {
-                    if (statusText) statusText.innerText = "Nuvem Atualizada";
-                    if (indicator) indicator.className = "w-2 h-2 rounded-full bg-emerald-500";
-                } else {
-                    throw new Error(data.error || "Erro ao salvar");
-                }
-            } catch (error) {
-                console.error("Erro ao sincronizar com a nuvem:", error);
-                if (statusText) statusText.innerText = "Erro: " + error.message;
-                if (indicator) indicator.className = "w-2 h-2 rounded-full bg-red-500";
-            }
-        }
-
-        // Functions
-        function setRating(val) {
-            currentRating = val;
-            const buttons = document.querySelectorAll('.star-btn');
-            buttons.forEach((btn, idx) => {
-                if (idx < val) {
-                    btn.classList.add('text-amber-400');
-                    btn.classList.remove('text-zinc-300');
-                    btn.innerHTML = starFull;
-                } else {
-                    btn.classList.remove('text-amber-400');
-                    btn.classList.add('text-zinc-300');
-                    btn.innerHTML = starEmpty;
-                }
-            });
-        }
-
-        function addPlayer() {
-            const nameInput = document.getElementById('player-name');
-            const typeInput = document.getElementById('player-type');
-            const name = nameInput.value.trim();
-            const type = typeInput.value;
-            if (!name) return;
-
-            const player = {
-                id: Date.now().toString(),
-                name: name,
-                type: type,
-                level: currentRating,
-                author: currentUser
+                const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
+                setTeamA({ players: shuffle(a), score: 0 });
+                setTeamB({ players: shuffle(b), score: 0 });
+                setCurrentTab('teams');
             };
 
-            players.push(player);
-            savePlayers();
-            renderPlayers();
-            nameInput.value = '';
-            setRating(3);
-        }
-
-        function removePlayer(id) {
-            players = players.filter(p => p.id !== id);
-            savePlayers();
-            renderPlayers();
-        }
-
-        function savePlayers() {
-            localStorage.setItem('futamigos_players', JSON.stringify(players));
-            if (document.getElementById('draw-player-count')) {
-                document.getElementById('draw-player-count').innerText = players.length;
-            }
-            syncWithCloud();
-        }
-
-        function renderPlayers() {
-            const list = document.getElementById('players-list');
-            const count = document.getElementById('draw-player-count');
-            
-            if (count) count.innerText = players.length;
-
-            if (players.length === 0) {
-                list.innerHTML = '<div class="text-center py-12 bg-white rounded-2xl border border-dashed border-zinc-300"><p class="text-zinc-400 text-sm">Nenhum jogador adicionado ainda.</p></div>';
-                return;
-            }
-
-            list.innerHTML = players.map(p => {
-                const authorTag = p.author === 'Dan2620' 
-                    ? '<span class="ml-2 px-1.5 py-0.5 bg-black text-white text-[8px] font-black rounded uppercase">Dan</span>'
-                    : p.author === 'Davi2168'
-                        ? '<span class="ml-2 px-1.5 py-0.5 bg-red-600 text-white text-[8px] font-black rounded uppercase">Davi</span>'
-                        : '';
-
-                const typeTag = p.type === 'mensal'
-                    ? '<span class="text-[10px] font-bold text-emerald-600 uppercase tracking-tighter">Mensal</span>'
-                    : '<span class="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">Diarista</span>';
-
-                return `
-                <div class="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between group">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-xs font-bold text-zinc-500">
-                            ${p.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <p class="font-semibold text-zinc-800 flex items-center">${p.name}${authorTag}</p>
-                                ${typeTag}
-                            </div>
-                            <div class="flex gap-0.5">
-                                ${Array(p.level).fill('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" class="text-amber-400"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>').join('')}
-                            </div>
-                        </div>
-                    </div>
-                    <button onclick="removePlayer('${p.id}')" class="p-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-                    </button>
-                </div>
-            `}).join('');
-        }
-
-        // Finance Functions
-        function addFinanceEntry() {
-            const descInput = document.getElementById('finance-desc');
-            const amountInput = document.getElementById('finance-amount');
-            const typeInput = document.getElementById('finance-type');
-
-            const desc = descInput.value.trim();
-            const amount = parseFloat(amountInput.value);
-            const type = typeInput.value;
-
-            if (!desc || isNaN(amount)) return;
-
-            const entry = {
-                id: Date.now().toString(),
-                description: desc,
-                amount: amount,
-                type: type,
-                date: new Date().toLocaleDateString('pt-BR'),
-                author: currentUser
+            const updateScore = (team, val) => {
+                if (team === 'a') setTeamA({ ...teamA, score: Math.max(0, teamA.score + val) });
+                else setTeamB({ ...teamB, score: Math.max(0, teamB.score + val) });
             };
 
-            finances.push(entry);
-            saveFinances();
-            renderFinances();
+            const shareMatch = () => {
+                const text = `⚽ *Baba gostosinho - Resumo da Partida* ⚽\n\n` +
+                    `Placar: Time A ${teamA.score} x ${teamB.score} Time B\n` +
+                    `Tempo: ${formatTime(timerSeconds)}\n\n` +
+                    `*Time A:* ${teamA.players.map(p => p.name).join(', ')}\n` +
+                    `*Time B:* ${teamB.players.map(p => p.name).join(', ')}\n\n` +
+                    `Organizado via Baba gostosinho!`;
 
-            descInput.value = '';
-            amountInput.value = '';
-        }
+                if (navigator.share) {
+                    navigator.share({ text });
+                } else {
+                    navigator.clipboard.writeText(text);
+                    alert('Resumo copiado para a área de transferência!');
+                }
+            };
 
-        function removeFinanceEntry(id) {
-            finances = finances.filter(f => f.id !== id);
-            saveFinances();
-            renderFinances();
-        }
-
-        function saveFinances() {
-            localStorage.setItem('futamigos_finances', JSON.stringify(finances));
-            syncWithCloud();
-        }
-
-        function renderFinances() {
-            const list = document.getElementById('finance-list');
-            const balanceDisplay = document.getElementById('total-balance');
-
-            const total = finances.reduce((acc, f) => {
+            const totalBalance = finances.reduce((acc, f) => {
                 return f.type === 'income' ? acc + f.amount : acc - f.amount;
             }, 0);
 
-            balanceDisplay.innerText = `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-            
-            const playerBalanceDisplay = document.getElementById('player-total-balance');
-            if (playerBalanceDisplay) playerBalanceDisplay.innerText = balanceDisplay.innerText;
-
-            if (finances.length === 0) {
-                list.innerHTML = '<div class="text-center py-8 text-zinc-400 text-sm">Nenhuma transação registrada.</div>';
-                const playerList = document.getElementById('player-finance-list');
-                if (playerList) playerList.innerHTML = list.innerHTML;
-                return;
-            }
-
-            const html = finances.slice().reverse().map(f => {
-                const authorTag = f.author === 'Dan2620' 
-                    ? '<span class="ml-2 px-1 bg-black text-white text-[7px] font-black rounded uppercase">Dan</span>'
-                    : f.author === 'Davi2168'
-                        ? '<span class="ml-2 px-1 bg-red-600 text-white text-[7px] font-black rounded uppercase">Davi</span>'
-                        : '';
-
-                return `
-                <div class="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between">
-                    <div>
-                        <p class="font-bold text-zinc-800 flex items-center">${f.description}${authorTag}</p>
-                        <p class="text-[10px] text-zinc-400 uppercase font-bold">${f.date}</p>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span class="font-black ${f.type === 'income' ? 'text-emerald-600' : 'text-red-500'}">
-                            ${f.type === 'income' ? '+' : '-'} R$ ${f.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </span>
-                        <button onclick="removeFinanceEntry('${f.id}')" class="admin-only p-1 text-zinc-300 hover:text-red-500 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                        </button>
-                    </div>
-                </div>
-            `}).join('');
-
-            list.innerHTML = html;
-            const playerList = document.getElementById('player-finance-list');
-            if (playerList) playerList.innerHTML = html;
-        }
-
-        function switchAdminSubTab(subTab) {
-            document.querySelectorAll('.admin-section').forEach(s => s.classList.add('hidden'));
-            document.getElementById(`admin-${subTab}`).classList.remove('hidden');
-
-            document.querySelectorAll('.admin-sub-btn').forEach(b => {
-                b.classList.remove('bg-white', 'shadow-sm', 'text-emerald-600');
-                b.classList.add('text-zinc-500');
-            });
-
-            const activeBtn = document.getElementById(`sub-nav-${subTab}`);
-            activeBtn.classList.add('bg-white', 'shadow-sm', 'text-emerald-600');
-            activeBtn.classList.remove('text-zinc-500');
-
-            if (subTab === 'list') {
-                updateListPreview();
-            }
-        }
-
-        function formatWhatsAppList() {
-            const date = document.getElementById('match-date').value;
-            
-            let listText = `*⚽💨💨🏃🏻LISTA DO BABA GOSTOSINHO*\n\n`;
-            listText += ` *${date}* ⚽🏆\n`;
-            listText += `*Horário - 15:30 horas da tarde*\n`;
-            listText += ` *Valor: 8,00* \n`;
-            listText += ` *Chave PIX : 7799930-4025*\n`;
-            listText += `*Esmael de Souza Silva*\n`;
-            listText += `⚠️ *OBRIGATÓRIO COLETES AZUL E VERMELHO ⚠️*\n\n`;
-
-            listText += `1- \n2- \n3- \n4- \n5- \n6- \n7- \n8- \n9- \n10-\n11-\n12- \n🇧🇷-\n14- \n15- \n16- \n17- \n18-\n19-\n20- \n21- \n22-\n23- \n24-\n\n`;
-
-            listText += `Suplentes:\n1-\n2-\n3-\n4-\n\n`;
-
-            listText += `*Goleiros*\n\n\n`;
-            listText += `1- \n2- \n3-\n4-\n`;
-            listText += `*LISTA DE PUNIDOS - R$ 15,00*\n`;
-            listText += `1- \n2-\n3-\n`;
-            listText += `*OBS:* \n\n`;
-            listText += `*OBS: LIMITE MÁXIMO de 4 TIMES*\n`;
-            listText += `*_⚠️🤑PAGAMENTO ANTES DE COMEÇAR, VAI SER FEITO A CHAMADA QUEM NÃO PAGOU ANTES NÃO JOGA🤑⚠️_*\n\n`;
-            listText += `*🥵🍶🥛LEVEM SUAS GARRAFAS DE ÁGUA⚠️*`;
-
-            return listText;
-        }
-
-        function updateListPreview() {
-            const preview = document.getElementById('list-preview');
-            if (preview) {
-                preview.innerText = formatWhatsAppList();
-            }
-        }
-
-        function copyWhatsAppList() {
-            const text = formatWhatsAppList();
-            navigator.clipboard.writeText(text);
-            alert('Lista copiada com sucesso!');
-        }
-
-        function sendWhatsAppList() {
-            const text = encodeURIComponent(formatWhatsAppList());
-            const url = `https://api.whatsapp.com/send?text=${text}`;
-            window.open(url, '_blank');
-        }
-
-        function generateTeams() {
-            if (players.length < 2) return;
-
-            const sorted = [...players].sort((a, b) => b.level - a.level);
-            const a = [];
-            const b = [];
-
-            sorted.forEach((p, i) => {
-                if (i % 2 === 0) a.push(p);
-                else b.push(p);
-            });
-
-            const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
-            teamA.players = shuffle(a);
-            teamB.players = shuffle(b);
-            teamA.score = 0;
-            teamB.score = 0;
-
-            renderTeams();
-            switchTab('teams');
-        }
-
-        function renderTeams() {
-            const listA = document.getElementById('team-a-list');
-            const listB = document.getElementById('team-b-list');
-            const avgA = document.getElementById('avg-a');
-            const avgB = document.getElementById('avg-b');
-
-            const calcAvg = (team) => (team.players.reduce((acc, p) => acc + p.level, 0) / (team.players.length || 1)).toFixed(1);
-            
-            avgA.innerText = `Média: ${calcAvg(teamA)}`;
-            avgB.innerText = `Média: ${calcAvg(teamB)}`;
-
-            const renderPlayerRow = (p) => `
-                <div class="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
-                    <span class="text-sm font-medium text-zinc-700">${p.name}</span>
-                    <div class="flex gap-0.5">
-                        ${Array(p.level).fill('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" class="text-amber-400"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>').join('')}
-                    </div>
-                </div>
-            `;
-
-            listA.innerHTML = teamA.players.map(renderPlayerRow).join('');
-            listB.innerHTML = teamB.players.map(renderPlayerRow).join('');
-        }
-
-        function switchTab(tabId) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            const targetTab = document.getElementById(`tab-${tabId}`);
-            if (targetTab) targetTab.classList.add('active');
-
-            // Reset home sub-views when switching to home tab via "Início" button
-            if (tabId === 'home') {
-                closeAdmin();
-            }
-
-            // Handle navigation visibility
-            if (tabId === 'home' && document.getElementById('home-admin-panel').classList.contains('hidden')) {
-                document.body.classList.add('hide-nav');
-            } else {
-                document.body.classList.remove('hide-nav');
-            }
-
-            updateNavHighlight(tabId);
-        }
-
-        function updateNavHighlight(tabId) {
-            document.querySelectorAll('.nav-btn').forEach(b => b.classList.replace('text-emerald-600', 'text-zinc-400'));
-            
-            let highlightId = tabId;
-            if (tabId === 'finance') highlightId = 'admin';
-            
-            const navBtn = document.getElementById(`nav-${highlightId}`);
-            if (navBtn) navBtn.classList.replace('text-zinc-400', 'text-emerald-600');
-        }
-
-        function exitToSelection() {
-            document.body.classList.remove('view-mode');
-            switchTab('home');
-            closeAdmin();
-        }
-
-        function openAdmin() {
-            document.getElementById('password-modal').classList.remove('hidden');
-            document.getElementById('admin-password-input').value = '';
-            document.getElementById('admin-password-input').focus();
-            
-            // Add Enter key listener
-            document.getElementById('admin-password-input').onkeydown = (e) => {
-                if (e.key === 'Enter') checkAdminPassword();
+            const getAuthorTag = (author) => {
+                if (author === 'Dan2620') return <span className="ml-2 px-1.5 py-0.5 bg-black text-white text-[8px] font-black rounded uppercase">Dan</span>;
+                if (author === 'Davi2168') return <span className="ml-2 px-1.5 py-0.5 bg-red-600 text-white text-[8px] font-black rounded uppercase">Davi</span>;
+                return null;
             };
-        }
 
-        function closePasswordModal() {
-            document.getElementById('password-modal').classList.add('hidden');
-        }
-
-        function checkAdminPassword() {
-            const authorizedPasswords = ["Dan2620", "Davi2168"];
-            const password = document.getElementById('admin-password-input').value;
-            
-            if (!authorizedPasswords.includes(password)) {
-                alert("Senha incorreta! Acesso negado.");
-                return;
+            if (isLoading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-zinc-50">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+                    </div>
+                );
             }
 
-            currentUser = password;
-            localStorage.setItem('futamigos_current_user', currentUser);
+            return (
+                <div className="bg-zinc-50 text-zinc-900 min-h-screen pb-24">
+                    {/* Header */}
+                    {(currentTab !== 'home' || isAdminMode) && (
+                        <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
+                            <div className="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
+                                <button 
+                                    onClick={() => {
+                                        if (isAdminMode && currentTab === 'home') setIsAdminMode(false);
+                                        else setCurrentTab('home');
+                                    }} 
+                                    className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-600"
+                                >
+                                    <Icon name="chevron-left" size={20} />
+                                </button>
+                                <button onClick={shareMatch} className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-600">
+                                    <Icon name="share-2" size={20} />
+                                </button>
+                            </div>
+                        </header>
+                    )}
 
-            closePasswordModal();
-            document.body.classList.remove('view-mode');
-            document.getElementById('nav-admin-label').innerText = 'Comissão';
-            document.getElementById('nav-admin-icon').innerHTML = iconAdmin;
+                    <main className="max-w-md mx-auto px-4 py-6">
+                        {/* Home Tab */}
+                        {currentTab === 'home' && (
+                            <div className="space-y-6">
+                                {!isAdminMode && !isViewMode ? (
+                                    <div className="fixed inset-0 flex flex-col items-center justify-end px-8 pb-20 bg-cover bg-center" style={{ backgroundImage: "url('https://image2url.com/r2/default/images/1773069462364-21238cdb-2ba8-4949-b313-b74d3a6466ec.png')" }}>
+                                        <div className="flex gap-4 w-full max-w-md">
+                                            <button 
+                                                onClick={() => setShowPasswordModal(true)} 
+                                                className="flex-1 bg-emerald-600/80 backdrop-blur-md hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-[0_6px_0_rgb(5,120,85)] transition-all active:shadow-none active:translate-y-[6px] flex flex-col items-center justify-center gap-2 border border-white/20"
+                                            >
+                                                <Icon name="shield-check" size={24} />
+                                                <span className="text-xs tracking-widest">COMISSÃO</span>
+                                            </button>
+                                            <button 
+                                                onClick={() => {
+                                                    setIsViewMode(true);
+                                                    setCurrentTab('teams');
+                                                }} 
+                                                className="flex-1 bg-yellow-400/80 backdrop-blur-md hover:bg-yellow-400 text-yellow-950 font-bold py-4 rounded-2xl shadow-[0_6px_0_rgb(202,138,4)] transition-all active:shadow-none active:translate-y-[6px] flex flex-col items-center justify-center gap-2 border border-yellow-300/30"
+                                            >
+                                                <Icon name="users" size={24} />
+                                                <span className="text-xs tracking-widest">JOGADOR</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : isAdminMode ? (
+                                    <div className="space-y-6">
+                                        <h2 className="text-2xl font-black tracking-tight text-zinc-900">Painel ADM</h2>
+                                        <div className="flex bg-zinc-200/50 p-1 rounded-xl">
+                                            {['finance', 'members', 'draw'].map((tab) => (
+                                                <button 
+                                                    key={tab}
+                                                    onClick={() => setAdminSubTab(tab)} 
+                                                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${adminSubTab === tab ? 'bg-white shadow-sm text-emerald-600' : 'text-zinc-500'}`}
+                                                >
+                                                    {tab === 'finance' ? 'FINANCEIRO' : tab === 'members' ? 'MEMBROS' : 'SORTEIO'}
+                                                </button>
+                                            ))}
+                                        </div>
 
-            // Ensure home tab is active
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.getElementById('tab-home').classList.add('active');
+                                        {adminSubTab === 'finance' && (
+                                            <div className="space-y-6">
+                                                <div className="bg-emerald-600 p-6 rounded-3xl text-white shadow-lg shadow-emerald-600/20">
+                                                    <p className="text-xs font-bold uppercase tracking-widest opacity-80">Saldo Total</p>
+                                                    <p className="text-4xl font-black">R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                                                    <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
+                                                        <Icon name="dollar-sign" size={16} />
+                                                        Nova Transação
+                                                    </h3>
+                                                    <div className="space-y-3">
+                                                        <input type="text" value={financeDesc} onChange={(e) => setFinanceDesc(e.target.value)} placeholder="Descrição" className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                                                        <div className="flex gap-2">
+                                                            <input type="number" value={financeAmount} onChange={(e) => setFinanceAmount(e.target.value)} placeholder="Valor" className="flex-1 px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                                                            <select value={financeType} onChange={(e) => setFinanceType(e.target.value)} className="px-4 py-3 rounded-xl border border-zinc-200 bg-white">
+                                                                <option value="income">Receita</option>
+                                                                <option value="expense">Despesa</option>
+                                                            </select>
+                                                        </div>
+                                                        <button onClick={addFinanceEntry} className="w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl">Lançar</button>
+                                                    </div>
+                                                </section>
+                                                <div className="space-y-2">
+                                                    {finances.slice().reverse().map(f => (
+                                                        <div key={f.id} className="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between">
+                                                            <div>
+                                                                <p className="font-bold text-zinc-800 flex items-center">{f.description}{getAuthorTag(f.author)}</p>
+                                                                <p className="text-[10px] text-zinc-400 uppercase font-bold">{f.date}</p>
+                                                            </div>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className={`font-black ${f.type === 'income' ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                                    {f.type === 'income' ? '+' : '-'} R$ {f.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                </span>
+                                                                <button onClick={() => removeFinanceEntry(f.id)} className="p-1 text-zinc-300 hover:text-red-500">
+                                                                    <Icon name="trash-2" size={14} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
 
-            document.getElementById('home-selection').classList.add('hidden');
-            document.getElementById('home-admin-panel').classList.remove('hidden');
-            document.body.classList.remove('hide-nav'); 
-            
-            updateNavHighlight('admin');
+                                        {adminSubTab === 'members' && (
+                                            <div className="space-y-6">
+                                                <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                                                    <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
+                                                        <Icon name="plus" size={16} />
+                                                        Novo Membro
+                                                    </h3>
+                                                    <div className="space-y-4">
+                                                        <input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="Nome" className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                                                        <div className="flex items-center justify-between bg-zinc-50 p-3 rounded-xl">
+                                                            <span className="text-sm text-zinc-600 font-medium">Nível:</span>
+                                                            <div className="flex gap-1">
+                                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                                    <button key={star} onClick={() => setNewPlayerRating(star)} className={`p-1 ${newPlayerRating >= star ? 'text-amber-400' : 'text-zinc-300'}`}>
+                                                                        <Icon name="star" size={20} fill={newPlayerRating >= star ? "currentColor" : "none"} />
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <button onClick={addPlayer} className="w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl">Confirmar</button>
+                                                    </div>
+                                                </section>
+                                                <div className="space-y-2">
+                                                    {players.map(p => (
+                                                        <div key={p.id} className="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-xs font-bold text-zinc-500">
+                                                                    {p.name.charAt(0).toUpperCase()}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-semibold text-zinc-800 flex items-center">{p.name}{getAuthorTag(p.author)}</p>
+                                                                    <div className="flex gap-0.5">
+                                                                        {Array.from({ length: p.level }).map((_, i) => (
+                                                                            <Icon key={i} name="star" size={10} fill="currentColor" className="text-amber-400" />
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <button onClick={() => removePlayer(p.id)} className="p-2 text-zinc-300 hover:text-red-500">
+                                                                <Icon name="trash-2" size={18} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {adminSubTab === 'draw' && (
+                                            <div className="bg-white p-8 rounded-3xl border border-zinc-200 text-center space-y-6">
+                                                <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto text-zinc-400">
+                                                    <Icon name="shuffle" size={40} />
+                                                </div>
+                                                <h3 className="text-xl font-bold">Sorteio de Times</h3>
+                                                <div className="bg-zinc-50 p-4 rounded-2xl border flex justify-between items-center">
+                                                    <span className="text-sm font-bold text-zinc-600">Membros Ativos:</span>
+                                                    <span className="text-xl font-black text-emerald-600">{players.length}</span>
+                                                </div>
+                                                <button onClick={generateTeams} className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-lg">REALIZAR SORTEIO</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : null}
+                            </div>
+                        )}
+
+                        {/* Teams Tab */}
+                        {currentTab === 'teams' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-xl font-black">Times Sorteados</h2>
+                                    {isAdminMode && (
+                                        <button onClick={generateTeams} className="text-sm font-medium text-emerald-600 flex items-center gap-1">
+                                            <Icon name="shuffle" size={16} /> Sortear Novamente
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-1 gap-4">
+                                    {[ {t: teamA, n: 'A', c: 'bg-emerald-600'}, {t: teamB, n: 'B', c: 'bg-zinc-800'} ].map(team => (
+                                        <div key={team.n} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+                                            <div className={`${team.c} px-4 py-3 text-white flex justify-between items-center`}>
+                                                <h3 className="font-bold">Time {team.n}</h3>
+                                                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                                                    Média: {(team.t.players.reduce((acc, p) => acc + p.level, 0) / (team.t.players.length || 1)).toFixed(1)}
+                                                </span>
+                                            </div>
+                                            <div className="p-4 space-y-2">
+                                                {team.t.players.map(p => (
+                                                    <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
+                                                        <span className="text-sm font-medium text-zinc-700">{p.name}</span>
+                                                        <div className="flex gap-0.5">
+                                                            {Array.from({ length: p.level }).map((_, i) => (
+                                                                <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {isAdminMode && (
+                                    <button onClick={() => setCurrentTab('match')} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
+                                        Começar Partida <Icon name="play" size={20} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Match Tab */}
+                        {currentTab === 'match' && (
+                            <div className="space-y-8">
+                                <div className="text-center space-y-2">
+                                    <div className="inline-flex items-center gap-2 bg-zinc-100 px-4 py-2 rounded-full text-zinc-600 font-mono text-xl font-bold">
+                                        <Icon name="play" size={20} /> <span>{formatTime(timerSeconds)}</span>
+                                    </div>
+                                    {isAdminMode && (
+                                        <div className="flex justify-center gap-4 mt-4">
+                                            <button onClick={() => setIsTimerRunning(!isTimerRunning)} className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg ${isTimerRunning ? 'bg-amber-500' : 'bg-emerald-600'}`}>
+                                                {isTimerRunning ? <Icon name="pause" size={24} /> : <Icon name="play" size={24} />}
+                                            </button>
+                                            <button onClick={() => { setIsTimerRunning(false); setTimerSeconds(0); }} className="w-14 h-14 rounded-full bg-zinc-200 text-zinc-600 flex items-center justify-center">
+                                                <Icon name="rotate-ccw" size={24} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                    {[ {t: 'a', s: teamA.score, n: 'Time A', c: 'text-emerald-600'}, {t: 'b', s: teamB.score, n: 'Time B', c: 'text-zinc-800'} ].map(team => (
+                                        <div key={team.t} className="flex-1 bg-white p-6 rounded-3xl border text-center space-y-4">
+                                            <p className={`text-xs font-bold uppercase tracking-widest ${team.c}`}>{team.n}</p>
+                                            <p className="text-6xl font-black">{team.s}</p>
+                                            {isAdminMode && (
+                                                <div className="flex justify-center gap-2">
+                                                    <button onClick={() => updateScore(team.t, -1)} className="p-2 bg-zinc-100 rounded-xl"><Icon name="minus" size={20} /></button>
+                                                    <button onClick={() => updateScore(team.t, 1)} className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><Icon name="plus" size={20} /></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                                <button onClick={() => setCurrentTab('teams')} className="w-full py-3 text-sm font-semibold text-zinc-400">Encerrar Partida</button>
+                            </div>
+                        )}
+
+                        {/* Finance Tab (Player View) */}
+                        {currentTab === 'finance' && (
+                            <div className="space-y-6">
+                                <h2 className="text-2xl font-black">Financeiro</h2>
+                                <div className="bg-emerald-600 p-6 rounded-3xl text-white shadow-lg">
+                                    <p className="text-xs font-bold uppercase opacity-80">Saldo em Caixa</p>
+                                    <p className="text-4xl font-black">R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                </div>
+                                <div className="space-y-2">
+                                    {finances.slice().reverse().map(f => (
+                                        <div key={f.id} className="bg-white p-4 rounded-xl border flex items-center justify-between">
+                                            <div>
+                                                <p className="font-bold text-zinc-800 flex items-center">{f.description}{getAuthorTag(f.author)}</p>
+                                                <p className="text-[10px] text-zinc-400 uppercase font-bold">{f.date}</p>
+                                            </div>
+                                            <span className={`font-black ${f.type === 'income' ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                {f.type === 'income' ? '+' : '-'} R$ {f.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* Bottom Navigation */}
+                    {(currentTab !== 'home' || isAdminMode) && (
+                        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 px-4 py-3 z-10">
+                            <div className="max-w-md mx-auto flex justify-around items-center">
+                                <button onClick={() => { if (isViewMode) setCurrentTab('finance'); else if (isAdminMode) { setCurrentTab('home'); setAdminSubTab('finance'); } }} className={`flex flex-col items-center gap-1 ${((isAdminMode && currentTab === 'home' && adminSubTab === 'finance') || (isViewMode && currentTab === 'finance')) ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                    <Icon name={isViewMode ? 'dollar-sign' : 'shield-check'} size={24} />
+                                    <span className="text-[10px] font-bold uppercase">{isViewMode ? 'Financeiro' : 'Comissão'}</span>
+                                </button>
+                                <button onClick={() => setCurrentTab('teams')} className={`flex flex-col items-center gap-1 ${currentTab === 'teams' ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                    <Icon name="shuffle" size={24} />
+                                    <span className="text-[10px] font-bold uppercase">Times</span>
+                                </button>
+                                <button onClick={() => setCurrentTab('match')} className={`flex flex-col items-center gap-1 ${currentTab === 'match' ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                    <Icon name="trophy" size={24} />
+                                    <span className="text-[10px] font-bold uppercase">Partida</span>
+                                </button>
+                            </div>
+                        </nav>
+                    )}
+
+                    {/* Password Modal */}
+                    {showPasswordModal && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+                            <div className="bg-white w-full max-w-xs rounded-3xl p-8 shadow-2xl space-y-6">
+                                <div className="text-center space-y-2">
+                                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                                        <Icon name="lock" size={32} />
+                                    </div>
+                                    <h3 className="text-xl font-black">Acesso Restrito</h3>
+                                    <p className="text-sm text-zinc-500">Digite a senha da Comissão</p>
+                                </div>
+                                <div className="space-y-4">
+                                    <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdminAuth()} placeholder="••••••••" className="w-full px-4 py-4 rounded-2xl border-2 text-center text-2xl tracking-widest font-mono" />
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setShowPasswordModal(false)} className="flex-1 py-4 font-bold text-zinc-400">Cancelar</button>
+                                        <button onClick={handleAdminAuth} className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-bold">Entrar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
         }
 
-        function openPlayer() {
-            document.body.classList.add('view-mode');
-            document.getElementById('nav-admin-label').innerText = 'Financeiro';
-            document.getElementById('nav-admin-icon').innerHTML = iconFinance;
-            
-            // Go directly to teams or finance? User said "painel para ver despesas e sorteio"
-            // Let's go to teams first as it's the most important for a player
-            switchTab('teams');
-        }
-
-        function handleNavAdmin() {
-            if (document.body.classList.contains('view-mode')) {
-                switchTab('finance');
-            } else {
-                openAdmin();
-            }
-        }
-
-        function closeAdmin() {
-            document.getElementById('nav-admin-label').innerText = 'Comissão';
-            document.getElementById('nav-admin-icon').innerHTML = iconAdmin;
-            document.getElementById('home-selection').classList.remove('hidden');
-            document.getElementById('home-admin-panel').classList.add('hidden');
-            // Only hide nav if we are on the selection screen
-            if (document.getElementById('tab-home').classList.contains('active')) {
-                document.body.classList.add('hide-nav');
-            }
-            updateNavHighlight('home');
-        }
-
-        function startMatch() {
-            timerSeconds = 0;
-            updateTimerDisplay();
-            updateScoreDisplay();
-            switchTab('match');
-        }
-
-        function toggleTimer() {
-            const btn = document.getElementById('btn-timer-toggle');
-            const icon = document.getElementById('timer-icon');
-
-            if (timerInterval) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-                btn.classList.replace('bg-amber-500', 'bg-emerald-600');
-                icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
-            } else {
-                timerInterval = setInterval(() => {
-                    timerSeconds++;
-                    updateTimerDisplay();
-                }, 1000);
-                btn.classList.replace('bg-emerald-600', 'bg-amber-500');
-                icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
-            }
-        }
-
-        function resetTimer() {
-            if (timerInterval) toggleTimer();
-            timerSeconds = 0;
-            updateTimerDisplay();
-        }
-
-        function updateTimerDisplay() {
-            const mins = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
-            const secs = (timerSeconds % 60).toString().padStart(2, '0');
-            document.getElementById('timer-display').innerText = `${mins}:${secs}`;
-        }
-
-        function updateScore(team, val) {
-            if (team === 'a') teamA.score = Math.max(0, teamA.score + val);
-            else teamB.score = Math.max(0, teamB.score + val);
-            updateScoreDisplay();
-        }
-
-        function updateScoreDisplay() {
-            document.getElementById('score-a').innerText = teamA.score;
-            document.getElementById('score-b').innerText = teamB.score;
-        }
-
-        function shareMatch() {
-            const mins = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
-            const secs = (timerSeconds % 60).toString().padStart(2, '0');
-            const timeStr = `${mins}:${secs}`;
-
-            const text = `⚽ *Baba gostosinho - Resumo da Partida* ⚽\n\n` +
-                `Placar: Time A ${teamA.score} x ${teamB.score} Time B\n` +
-                `Tempo: ${timeStr}\n\n` +
-                `*Time A:* ${teamA.players.map(p => p.name).join(', ')}\n` +
-                `*Time B:* ${teamB.players.map(p => p.name).join(', ')}\n\n` +
-                `Organizado via Baba gostosinho!`;
-
-            if (navigator.share) {
-                navigator.share({ text });
-            } else {
-                navigator.clipboard.writeText(text);
-                alert('Resumo copiado para a área de transferência!');
-            }
-        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
