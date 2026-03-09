@@ -409,11 +409,21 @@
 
         async function testApi() {
             try {
-                const res = await fetch(`${window.location.origin}/api/test`);
-                const data = await res.json();
-                alert("API Test: " + JSON.stringify(data));
+                const url = `${window.location.origin}/api/test`;
+                console.log("Testing API at:", url);
+                const res = await fetch(url);
+                const backendHeader = res.headers.get("X-Backend-Server");
+                const text = await res.text();
+                console.log("Raw Response:", text);
+                console.log("Backend Header:", backendHeader);
+                try {
+                    const data = JSON.parse(text);
+                    alert(`API Test Success!\nServer: ${backendHeader || "Unknown"}\nData: ${JSON.stringify(data)}`);
+                } catch (e) {
+                    alert(`API Test Failed (Not JSON).\nServer: ${backendHeader || "Unknown"}\nResponse starts with: ${text.substring(0, 100)}`);
+                }
             } catch (e) {
-                alert("API Test Failed: " + e.message);
+                alert("API Test Failed (Network/Other): " + e.message);
             }
         }
 
