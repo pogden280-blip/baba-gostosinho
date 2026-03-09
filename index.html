@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baba gostosinho - Organizador de Baba</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .star-active { color: #fbbf24; fill: #fbbf24; }
+        .star-inactive { color: #d1d5db; fill: none; }
+        .hide-nav nav { display: none; }
+        .hide-nav header { display: none; }
+        
+        /* View Mode (Player) Styles */
+        .view-mode .admin-only { display: none !important; }
+
+        /* Background Logo Container */
+        #home-selection {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://image2url.com/r2/default/images/1773069462364-21238cdb-2ba8-4949-b313-b74d3a6466ec.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: 0;
+        }
+    </style>
+</head>
+<body class="bg-zinc-50 text-zinc-900 min-h-screen pb-24 hide-nav">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-zinc-200 sticky top-0 z-10">
+        <div class="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+            </div>
+            <button onclick="shareMatch()" class="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-600">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto px-4 py-6">
+        
+        <!-- Tab: Home -->
+        <div id="tab-home" class="tab-content active">
+            <!-- Selection Screen -->
+            <div id="home-selection" class="flex flex-col items-center justify-end px-8 pb-20">
+                <div class="flex gap-4 w-full relative z-10 max-w-md">
+                    <button onclick="openAdmin()" class="flex-1 bg-emerald-600/80 backdrop-blur-md hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-[0_6px_0_rgb(5,120,85)] transition-all active:shadow-none active:translate-y-[6px] flex flex-col items-center justify-center gap-2 border border-white/20">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
+                        <span class="text-xs tracking-widest">COMISSÃO</span>
+                    </button>
+                    <button onclick="openPlayer()" class="flex-1 bg-yellow-400/80 backdrop-blur-md hover:bg-yellow-400 text-yellow-950 font-bold py-4 rounded-2xl shadow-[0_6px_0_rgb(202,138,4)] transition-all active:shadow-none active:translate-y-[6px] flex flex-col items-center justify-center gap-2 border border-yellow-300/30">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span class="text-xs tracking-widest">JOGADOR</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Admin Panel (Inside Home Tab) -->
+            <div id="home-admin-panel" class="hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-2xl font-black tracking-tight text-zinc-900">Painel ADM</h2>
+                    <button onclick="closeAdmin()" class="text-sm font-bold text-zinc-400 hover:text-zinc-600 flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                        Voltar
+                    </button>
+                </div>
+
+                <!-- Admin Sub-tabs -->
+                <div class="flex bg-zinc-200/50 p-1 rounded-xl">
+                    <button onclick="switchAdminSubTab('finance')" id="sub-nav-finance" class="admin-sub-btn flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white shadow-sm text-emerald-600">FINANCEIRO</button>
+                    <button onclick="switchAdminSubTab('members')" id="sub-nav-members" class="admin-sub-btn flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-500">MEMBROS</button>
+                    <button onclick="switchAdminSubTab('draw')" id="sub-nav-draw" class="admin-sub-btn flex-1 py-2 text-xs font-bold rounded-lg transition-all text-zinc-500">SORTEIO</button>
+                </div>
+
+                <!-- Admin Sections -->
+                <div id="admin-finance" class="admin-section space-y-6">
+                    <div class="bg-emerald-600 p-6 rounded-3xl text-white shadow-lg shadow-emerald-600/20">
+                        <p class="text-xs font-bold uppercase tracking-widest opacity-80">Saldo Total</p>
+                        <p class="text-4xl font-black" id="total-balance">R$ 0,00</p>
+                    </div>
+
+                    <section class="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            Nova Transação
+                        </h3>
+                        <div class="space-y-3">
+                            <input type="text" id="finance-desc" placeholder="Descrição (ex: Aluguel Quadra)" class="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
+                            <div class="flex gap-2">
+                                <input type="number" id="finance-amount" placeholder="Valor (R$)" class="flex-1 px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
+                                <select id="finance-type" class="px-4 py-3 rounded-xl border border-zinc-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                                    <option value="income">Receita</option>
+                                    <option value="expense">Despesa</option>
+                                </select>
+                            </div>
+                            <button onclick="addFinanceEntry()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition-all shadow-md shadow-emerald-600/10 active:scale-[0.98]">
+                                Lançar Transação
+                            </button>
+                        </div>
+                    </section>
+
+                    <div id="finance-list" class="space-y-2">
+                        <!-- Finance entries will be injected here -->
+                    </div>
+                </div>
+
+                <div id="admin-members" class="admin-section hidden space-y-6">
+                    <section class="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
+                            Adicionar Novo Membro
+                        </h3>
+                        <div class="space-y-4">
+                            <input type="text" id="player-name" placeholder="Nome do craque..." class="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
+                            <div class="flex items-center justify-between bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+                                <span class="text-sm text-zinc-600 font-medium">Nível:</span>
+                                <div class="flex gap-1" id="star-rating">
+                                    <button onclick="setRating(1)" class="star-btn p-1 transition-transform active:scale-90 text-amber-400" data-value="1"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                                    <button onclick="setRating(2)" class="star-btn p-1 transition-transform active:scale-90 text-amber-400" data-value="2"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                                    <button onclick="setRating(3)" class="star-btn p-1 transition-transform active:scale-90 text-amber-400" data-value="3"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                                    <button onclick="setRating(4)" class="star-btn p-1 transition-transform active:scale-90 text-zinc-300" data-value="4"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                                    <button onclick="setRating(5)" class="star-btn p-1 transition-transform active:scale-90 text-zinc-300" data-value="5"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                                </div>
+                            </div>
+                            <button onclick="addPlayer()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition-all shadow-md shadow-emerald-600/10 active:scale-[0.98]">
+                                Confirmar Cadastro
+                            </button>
+                        </div>
+                    </section>
+
+                    <div id="players-list" class="space-y-2">
+                        <!-- Players will be injected here -->
+                    </div>
+                </div>
+
+                <div id="admin-draw" class="admin-section hidden space-y-6">
+                    <div class="bg-white p-8 rounded-3xl border border-zinc-200 text-center space-y-6">
+                        <div class="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto text-zinc-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" x2="21" y1="20" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" x2="21" y1="15" y2="21"/><line x1="4" x2="9" y1="4" y2="9"/></svg>
+                        </div>
+                        <div class="space-y-2">
+                            <h3 class="text-xl font-bold text-zinc-900">Sorteio de Times</h3>
+                            <p class="text-sm text-zinc-500">O sistema irá equilibrar os times automaticamente com base no nível técnico dos membros cadastrados.</p>
+                        </div>
+                        <div class="bg-zinc-50 p-4 rounded-2xl border border-zinc-100 flex justify-between items-center">
+                            <span class="text-sm font-bold text-zinc-600">Membros Ativos:</span>
+                            <span class="text-xl font-black text-emerald-600" id="draw-player-count">0</span>
+                        </div>
+                        <button onclick="generateTeams()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-5 rounded-2xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95">
+                            REALIZAR SORTEIO
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Finance (Read-only for Players) -->
+        <div id="tab-finance" class="tab-content space-y-6">
+            <div class="flex items-center justify-between">
+                <h2 class="text-2xl font-black tracking-tight text-zinc-900">Financeiro</h2>
+                <button onclick="switchTab('home')" class="text-sm font-bold text-zinc-400 hover:text-zinc-600">Sair</button>
+            </div>
+            
+            <div class="bg-emerald-600 p-6 rounded-3xl text-white shadow-lg shadow-emerald-600/20">
+                <p class="text-xs font-bold uppercase tracking-widest opacity-80">Saldo em Caixa</p>
+                <p class="text-4xl font-black" id="player-total-balance">R$ 0,00</p>
+            </div>
+
+            <div id="player-finance-list" class="space-y-2">
+                <!-- Finance entries will be injected here -->
+            </div>
+        </div>
+
+        <!-- Tab: Times -->
+        <div id="tab-teams" class="tab-content space-y-6">
+            <div class="flex items-center justify-between mb-2">
+                <button onclick="switchTab('home')" class="text-sm font-medium text-zinc-500 flex items-center gap-1 hover:text-zinc-800 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    Voltar
+                </button>
+                <button onclick="generateTeams()" class="admin-only text-sm font-medium text-emerald-600 flex items-center gap-1 hover:text-emerald-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" x2="21" y1="20" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" x2="21" y1="15" y2="21"/><line x1="4" x2="9" y1="4" y2="9"/></svg>
+                    Sortear Novamente
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4">
+                <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+                    <div class="bg-emerald-600 px-4 py-3 text-white flex justify-between items-center">
+                        <h3 class="font-bold">Time A</h3>
+                        <span id="avg-a" class="text-xs bg-white/20 px-2 py-0.5 rounded-full">Média: 0.0</span>
+                    </div>
+                    <div id="team-a-list" class="p-4 space-y-2"></div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+                    <div class="bg-zinc-800 px-4 py-3 text-white flex justify-between items-center">
+                        <h3 class="font-bold">Time B</h3>
+                        <span id="avg-b" class="text-xs bg-white/20 px-2 py-0.5 rounded-full">Média: 0.0</span>
+                    </div>
+                    <div id="team-b-list" class="p-4 space-y-2"></div>
+                </div>
+            </div>
+
+            <button onclick="startMatch()" class="admin-only w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
+                Começar Partida 
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        </div>
+
+        <!-- Tab: Partida -->
+        <div id="tab-match" class="tab-content space-y-8">
+            <div class="text-center space-y-2">
+                <div class="inline-flex items-center gap-2 bg-zinc-100 px-4 py-2 rounded-full text-zinc-600 font-mono text-xl font-bold">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span id="timer-display">00:00</span>
+                </div>
+                <div class="admin-only flex justify-center gap-4 mt-4">
+                    <button id="btn-timer-toggle" onclick="toggleTimer()" class="w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform active:scale-90 bg-emerald-600">
+                        <svg id="timer-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </button>
+                    <button onclick="resetTimer()" class="w-14 h-14 rounded-full bg-zinc-200 text-zinc-600 flex items-center justify-center transition-transform active:scale-90">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm text-center space-y-4">
+                    <p class="text-xs font-bold uppercase tracking-widest text-emerald-600">Time A</p>
+                    <p id="score-a" class="text-6xl font-black text-zinc-900">0</p>
+                    <div class="admin-only flex justify-center gap-2">
+                        <button onclick="updateScore('a', -1)" class="p-2 bg-zinc-100 rounded-xl text-zinc-500 hover:bg-zinc-200 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                        </button>
+                        <button onclick="updateScore('a', 1)" class="p-2 bg-emerald-100 rounded-xl text-emerald-600 hover:bg-emerald-200 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="text-zinc-300 font-black text-2xl italic">VS</div>
+
+                <div class="flex-1 bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm text-center space-y-4">
+                    <p class="text-xs font-bold uppercase tracking-widest text-zinc-800">Time B</p>
+                    <p id="score-b" class="text-6xl font-black text-zinc-900">0</p>
+                    <div class="admin-only flex justify-center gap-2">
+                        <button onclick="updateScore('b', -1)" class="p-2 bg-zinc-100 rounded-xl text-zinc-500 hover:bg-zinc-200 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                        </button>
+                        <button onclick="updateScore('b', 1)" class="p-2 bg-zinc-800 rounded-xl text-white hover:bg-zinc-700 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pt-4">
+                <button onclick="switchTab('teams')" class="w-full py-3 text-sm font-semibold text-zinc-400 hover:text-zinc-600 transition-colors">
+                    Encerrar Partida
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 px-4 py-3 z-10">
+        <div class="max-w-md mx-auto flex justify-around items-center">
+            <button onclick="switchTab('home')" id="nav-home" class="nav-btn flex flex-col items-center gap-1 transition-colors text-zinc-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <span class="text-[10px] font-bold uppercase">Início</span>
+            </button>
+            <button onclick="handleNavAdmin()" id="nav-admin" class="nav-btn flex flex-col items-center gap-1 transition-colors text-zinc-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+                <span id="nav-admin-label" class="text-[10px] font-bold uppercase">Comissão</span>
+            </button>
+            <button onclick="switchTab('teams')" id="nav-teams" class="nav-btn flex flex-col items-center gap-1 transition-colors text-zinc-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" x2="21" y1="20" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" x2="21" y1="15" y2="21"/><line x1="4" x2="9" y1="4" y2="9"/></svg>
+                <span class="text-[10px] font-bold uppercase">Times</span>
+            </button>
+            <button onclick="switchTab('match')" id="nav-match" class="nav-btn flex flex-col items-center gap-1 transition-colors text-zinc-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                <span class="text-[10px] font-bold uppercase">Partida</span>
+            </button>
+        </div>
+    </nav>
+
+    <script>
+        // State
+        let players = JSON.parse(localStorage.getItem('futamigos_players')) || [];
+        let finances = JSON.parse(localStorage.getItem('futamigos_finances')) || [];
+        let currentRating = 3;
+        let teamA = { players: [], score: 0 };
+        let teamB = { players: [], score: 0 };
+        let timerSeconds = 0;
+        let timerInterval = null;
+
+        // Icons for stars
+        const starFull = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+        const starEmpty = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+
+        // Initialize
+        renderPlayers();
+        renderFinances();
+
+        // Functions
+        function setRating(val) {
+            currentRating = val;
+            const buttons = document.querySelectorAll('.star-btn');
+            buttons.forEach((btn, idx) => {
+                if (idx < val) {
+                    btn.classList.add('text-amber-400');
+                    btn.classList.remove('text-zinc-300');
+                    btn.innerHTML = starFull;
+                } else {
+                    btn.classList.remove('text-amber-400');
+                    btn.classList.add('text-zinc-300');
+                    btn.innerHTML = starEmpty;
+                }
+            });
+        }
+
+        function addPlayer() {
+            const nameInput = document.getElementById('player-name');
+            const name = nameInput.value.trim();
+            if (!name) return;
+
+            const player = {
+                id: Date.now().toString(),
+                name: name,
+                level: currentRating
+            };
+
+            players.push(player);
+            savePlayers();
+            renderPlayers();
+            nameInput.value = '';
+            setRating(3);
+        }
+
+        function removePlayer(id) {
+            players = players.filter(p => p.id !== id);
+            savePlayers();
+            renderPlayers();
+        }
+
+        function savePlayers() {
+            localStorage.setItem('futamigos_players', JSON.stringify(players));
+            document.getElementById('draw-player-count').innerText = players.length;
+        }
+
+        function renderPlayers() {
+            const list = document.getElementById('players-list');
+            const count = document.getElementById('draw-player-count');
+            
+            if (count) count.innerText = players.length;
+
+            if (players.length === 0) {
+                list.innerHTML = '<div class="text-center py-12 bg-white rounded-2xl border border-dashed border-zinc-300"><p class="text-zinc-400 text-sm">Nenhum jogador adicionado ainda.</p></div>';
+                return;
+            }
+
+            list.innerHTML = players.map(p => `
+                <div class="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between group">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-xs font-bold text-zinc-500">
+                            ${p.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <p class="font-semibold text-zinc-800">${p.name}</p>
+                            <div class="flex gap-0.5">
+                                ${Array(p.level).fill('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" class="text-amber-400"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>').join('')}
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="removePlayer('${p.id}')" class="p-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Finance Functions
+        function addFinanceEntry() {
+            const descInput = document.getElementById('finance-desc');
+            const amountInput = document.getElementById('finance-amount');
+            const typeInput = document.getElementById('finance-type');
+
+            const desc = descInput.value.trim();
+            const amount = parseFloat(amountInput.value);
+            const type = typeInput.value;
+
+            if (!desc || isNaN(amount)) return;
+
+            const entry = {
+                id: Date.now().toString(),
+                description: desc,
+                amount: amount,
+                type: type,
+                date: new Date().toLocaleDateString('pt-BR')
+            };
+
+            finances.push(entry);
+            saveFinances();
+            renderFinances();
+
+            descInput.value = '';
+            amountInput.value = '';
+        }
+
+        function removeFinanceEntry(id) {
+            finances = finances.filter(f => f.id !== id);
+            saveFinances();
+            renderFinances();
+        }
+
+        function saveFinances() {
+            localStorage.setItem('futamigos_finances', JSON.stringify(finances));
+        }
+
+        function renderFinances() {
+            const list = document.getElementById('finance-list');
+            const balanceDisplay = document.getElementById('total-balance');
+
+            const total = finances.reduce((acc, f) => {
+                return f.type === 'income' ? acc + f.amount : acc - f.amount;
+            }, 0);
+
+            balanceDisplay.innerText = `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            
+            const playerBalanceDisplay = document.getElementById('player-total-balance');
+            if (playerBalanceDisplay) playerBalanceDisplay.innerText = balanceDisplay.innerText;
+
+            if (finances.length === 0) {
+                list.innerHTML = '<div class="text-center py-8 text-zinc-400 text-sm">Nenhuma transação registrada.</div>';
+                const playerList = document.getElementById('player-finance-list');
+                if (playerList) playerList.innerHTML = list.innerHTML;
+                return;
+            }
+
+            const html = finances.slice().reverse().map(f => `
+                <div class="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between">
+                    <div>
+                        <p class="font-bold text-zinc-800">${f.description}</p>
+                        <p class="text-[10px] text-zinc-400 uppercase font-bold">${f.date}</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="font-black ${f.type === 'income' ? 'text-emerald-600' : 'text-red-500'}">
+                            ${f.type === 'income' ? '+' : '-'} R$ ${f.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                        <button onclick="removeFinanceEntry('${f.id}')" class="admin-only p-1 text-zinc-300 hover:text-red-500 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            list.innerHTML = html;
+            const playerList = document.getElementById('player-finance-list');
+            if (playerList) playerList.innerHTML = html;
+        }
+
+        function switchAdminSubTab(subTab) {
+            document.querySelectorAll('.admin-section').forEach(s => s.classList.add('hidden'));
+            document.getElementById(`admin-${subTab}`).classList.remove('hidden');
+
+            document.querySelectorAll('.admin-sub-btn').forEach(b => {
+                b.classList.remove('bg-white', 'shadow-sm', 'text-emerald-600');
+                b.classList.add('text-zinc-500');
+            });
+
+            const activeBtn = document.getElementById(`sub-nav-${subTab}`);
+            activeBtn.classList.add('bg-white', 'shadow-sm', 'text-emerald-600');
+            activeBtn.classList.remove('text-zinc-500');
+        }
+
+        function generateTeams() {
+            if (players.length < 2) return;
+
+            const sorted = [...players].sort((a, b) => b.level - a.level);
+            const a = [];
+            const b = [];
+
+            sorted.forEach((p, i) => {
+                if (i % 2 === 0) a.push(p);
+                else b.push(p);
+            });
+
+            const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+            teamA.players = shuffle(a);
+            teamB.players = shuffle(b);
+            teamA.score = 0;
+            teamB.score = 0;
+
+            renderTeams();
+            switchTab('teams');
+        }
+
+        function renderTeams() {
+            const listA = document.getElementById('team-a-list');
+            const listB = document.getElementById('team-b-list');
+            const avgA = document.getElementById('avg-a');
+            const avgB = document.getElementById('avg-b');
+
+            const calcAvg = (team) => (team.players.reduce((acc, p) => acc + p.level, 0) / (team.players.length || 1)).toFixed(1);
+            
+            avgA.innerText = `Média: ${calcAvg(teamA)}`;
+            avgB.innerText = `Média: ${calcAvg(teamB)}`;
+
+            const renderPlayerRow = (p) => `
+                <div class="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
+                    <span class="text-sm font-medium text-zinc-700">${p.name}</span>
+                    <div class="flex gap-0.5">
+                        ${Array(p.level).fill('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" class="text-amber-400"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>').join('')}
+                    </div>
+                </div>
+            `;
+
+            listA.innerHTML = teamA.players.map(renderPlayerRow).join('');
+            listB.innerHTML = teamB.players.map(renderPlayerRow).join('');
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            const targetTab = document.getElementById(`tab-${tabId}`);
+            if (targetTab) targetTab.classList.add('active');
+
+            // Reset home sub-views when switching to home tab via "Início" button
+            if (tabId === 'home') {
+                closeAdmin();
+            }
+
+            // Handle navigation visibility
+            if (tabId === 'home' && document.getElementById('home-admin-panel').classList.contains('hidden')) {
+                document.body.classList.add('hide-nav');
+            } else {
+                document.body.classList.remove('hide-nav');
+            }
+
+            updateNavHighlight(tabId);
+        }
+
+        function updateNavHighlight(tabId) {
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.replace('text-emerald-600', 'text-zinc-400'));
+            
+            let highlightId = tabId;
+            if (tabId === 'finance') highlightId = 'admin';
+            
+            const navBtn = document.getElementById(`nav-${highlightId}`);
+            if (navBtn) navBtn.classList.replace('text-zinc-400', 'text-emerald-600');
+        }
+
+        function openAdmin() {
+            document.body.classList.remove('view-mode');
+            document.getElementById('nav-admin-label').innerText = 'Comissão';
+
+            // Ensure home tab is active
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-home').classList.add('active');
+
+            document.getElementById('home-selection').classList.add('hidden');
+            document.getElementById('home-admin-panel').classList.remove('hidden');
+            document.body.classList.remove('hide-nav'); 
+            
+            updateNavHighlight('admin');
+        }
+
+        function openPlayer() {
+            document.body.classList.add('view-mode');
+            document.getElementById('nav-admin-label').innerText = 'Financeiro';
+            
+            // Go directly to teams or finance? User said "painel para ver despesas e sorteio"
+            // Let's go to teams first as it's the most important for a player
+            switchTab('teams');
+        }
+
+        function handleNavAdmin() {
+            if (document.body.classList.contains('view-mode')) {
+                switchTab('finance');
+            } else {
+                openAdmin();
+            }
+        }
+
+        function closeAdmin() {
+            document.getElementById('home-selection').classList.remove('hidden');
+            document.getElementById('home-admin-panel').classList.add('hidden');
+            // Only hide nav if we are on the selection screen
+            if (document.getElementById('tab-home').classList.contains('active')) {
+                document.body.classList.add('hide-nav');
+            }
+            updateNavHighlight('home');
+        }
+
+        function startMatch() {
+            timerSeconds = 0;
+            updateTimerDisplay();
+            updateScoreDisplay();
+            switchTab('match');
+        }
+
+        function toggleTimer() {
+            const btn = document.getElementById('btn-timer-toggle');
+            const icon = document.getElementById('timer-icon');
+
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                btn.classList.replace('bg-amber-500', 'bg-emerald-600');
+                icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+            } else {
+                timerInterval = setInterval(() => {
+                    timerSeconds++;
+                    updateTimerDisplay();
+                }, 1000);
+                btn.classList.replace('bg-emerald-600', 'bg-amber-500');
+                icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+            }
+        }
+
+        function resetTimer() {
+            if (timerInterval) toggleTimer();
+            timerSeconds = 0;
+            updateTimerDisplay();
+        }
+
+        function updateTimerDisplay() {
+            const mins = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
+            const secs = (timerSeconds % 60).toString().padStart(2, '0');
+            document.getElementById('timer-display').innerText = `${mins}:${secs}`;
+        }
+
+        function updateScore(team, val) {
+            if (team === 'a') teamA.score = Math.max(0, teamA.score + val);
+            else teamB.score = Math.max(0, teamB.score + val);
+            updateScoreDisplay();
+        }
+
+        function updateScoreDisplay() {
+            document.getElementById('score-a').innerText = teamA.score;
+            document.getElementById('score-b').innerText = teamB.score;
+        }
+
+        function shareMatch() {
+            const mins = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
+            const secs = (timerSeconds % 60).toString().padStart(2, '0');
+            const timeStr = `${mins}:${secs}`;
+
+            const text = `⚽ *Baba gostosinho - Resumo da Partida* ⚽\n\n` +
+                `Placar: Time A ${teamA.score} x ${teamB.score} Time B\n` +
+                `Tempo: ${timeStr}\n\n` +
+                `*Time A:* ${teamA.players.map(p => p.name).join(', ')}\n` +
+                `*Time B:* ${teamB.players.map(p => p.name).join(', ')}\n\n` +
+                `Organizado via Baba gostosinho!`;
+
+            if (navigator.share) {
+                navigator.share({ text });
+            } else {
+                navigator.clipboard.writeText(text);
+                alert('Resumo copiado para a área de transferência!');
+            }
+        }
+    </script>
+</body>
+</html>
+
