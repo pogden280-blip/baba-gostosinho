@@ -24,20 +24,22 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
 
   // API Routes
-  app.use("/api", (req, res, next) => {
-    res.setHeader("X-Backend-Server", "Express-Vite-Custom");
+  const apiRouter = express.Router();
+
+  apiRouter.use((req, res, next) => {
+    res.setHeader("X-Backend-Server", "Express-Vite-Custom-V2");
     next();
   });
 
-  app.get("/api/ping", (req, res) => {
-    console.log("[API] Ping requested");
-    res.json({ status: "ok", time: new Date().toISOString() });
+  apiRouter.get("/ping", (req, res) => {
+    res.send("PONG");
   });
 
-  app.get("/api/test", (req, res) => {
-    console.log("[API] Test requested - Sending JSON response");
-    res.status(200).json({ message: "API is working!", timestamp: new Date().toISOString() });
+  apiRouter.get("/test", (req, res) => {
+    res.json({ message: "API V2 is working!", timestamp: new Date().toISOString() });
   });
+
+  app.use("/api", apiRouter);
 
   const BIN_ID = (process.env.JSONBIN_BIN_ID || "69af06d2ae596e708f71a0ef").trim();
   const MASTER_KEY = (process.env.JSONBIN_MASTER_KEY || "$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi").trim();
@@ -140,8 +142,8 @@ async function startServer() {
     }
   };
 
-  app.get("/api/data", handleGetData);
-  app.put("/api/data", handlePutData);
+  apiRouter.get("/data", handleGetData);
+  apiRouter.put("/data", handlePutData);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
