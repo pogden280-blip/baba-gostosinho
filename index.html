@@ -74,6 +74,8 @@
             // Match States
             const [teams, setTeams] = useState([]); // Array of { name: 'Time 1', players: [], score: 0 }
             const [currentMatchTeams, setCurrentMatchTeams] = useState([0, 1]); // Indices of teams in match
+            const [matchHistory, setMatchHistory] = useState([]); // Array of { t1: name, s1: score, t2: name, s2: score, time: string }
+            const [showDaySummary, setShowDaySummary] = useState(false);
             const [timerSeconds, setTimerSeconds] = useState(0);
             const [isTimerRunning, setIsTimerRunning] = useState(false);
             const timerRef = useRef(null);
@@ -89,6 +91,8 @@
                             const data = await response.json();
                             setPlayers(data.record.players || []);
                             setFinances(data.record.finances || []);
+                            setMatchHistory(data.record.matchHistory || []);
+                            setShowDaySummary(data.record.showDaySummary || false);
                             if (data.record.lastDraw) {
                                 if (data.record.lastDraw.teams) {
                                     setTeams(data.record.lastDraw.teams);
@@ -113,9 +117,11 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw) => {
+            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary) => {
                 try {
                     const currentDraw = lastDraw !== undefined ? lastDraw : (teams.length > 0 ? { teams, currentMatchTeams } : null);
+                    const historyToSave = newHistory !== undefined ? newHistory : matchHistory;
+                    const summaryToSave = newShowSummary !== undefined ? newShowSummary : showDaySummary;
                     await fetch(API_URL, {
                         method: 'PUT',
                         headers: {
@@ -125,7 +131,9 @@
                         body: JSON.stringify({ 
                             players: newPlayers, 
                             finances: newFinances,
-                            lastDraw: currentDraw
+                            lastDraw: currentDraw,
+                            matchHistory: historyToSave,
+                            showDaySummary: summaryToSave
                         })
                     });
                 } catch (error) {
@@ -181,7 +189,7 @@
                 };
                 const updatedPlayers = [...players, newPlayer];
                 setPlayers(updatedPlayers);
-                saveData(updatedPlayers, finances);
+                saveData(updatedPlayers, finances, undefined, matchHistory);
                 setNewPlayerName('');
                 setNewPlayerRating(3);
                 setNewPlayerType('diarista');
@@ -197,7 +205,7 @@
                     return p;
                 });
                 setPlayers(updatedPlayers);
-                saveData(updatedPlayers, finances);
+                saveData(updatedPlayers, finances, undefined, matchHistory);
             };
 
             const togglePlayerStatus = (id, field) => {
@@ -208,13 +216,13 @@
                     return p;
                 });
                 setPlayers(updatedPlayers);
-                saveData(updatedPlayers, finances);
+                saveData(updatedPlayers, finances, undefined, matchHistory);
             };
 
             const removePlayer = (id) => {
                 const updatedPlayers = players.filter(p => p.id !== id);
                 setPlayers(updatedPlayers);
-                saveData(updatedPlayers, finances);
+                saveData(updatedPlayers, finances, undefined, matchHistory);
             };
 
             const generateWhatsAppList = (isEmpty = false) => {
@@ -308,7 +316,7 @@
                 };
                 const updatedFinances = [...finances, entry];
                 setFinances(updatedFinances);
-                saveData(players, updatedFinances);
+                saveData(players, updatedFinances, undefined, matchHistory);
                 setFinanceDesc('');
                 setFinanceAmount('');
             };
@@ -316,7 +324,7 @@
             const removeFinanceEntry = (id) => {
                 const updatedFinances = finances.filter(f => f.id !== id);
                 setFinances(updatedFinances);
-                saveData(players, updatedFinances);
+                saveData(players, updatedFinances, undefined, matchHistory);
             };
 
             const generateTeams = () => {
@@ -352,22 +360,132 @@
 
                 setTeams(newTeams);
                 setCurrentMatchTeams([0, 1]);
-                saveData(players, finances, { teams: newTeams, currentMatchTeams: [0, 1] });
+                setMatchHistory([]);
+                setShowDaySummary(false);
+                saveData(players, finances, { teams: newTeams, currentMatchTeams: [0, 1] }, [], false);
                 setCurrentTab('teams');
             };
 
             const deleteDraw = () => {
-                if (confirm('Deseja realmente excluir o último sorteio?')) {
-                    setTeams([]);
-                    saveData(players, finances, null);
-                }
+                setTeams([]);
+                setMatchHistory([]);
+                setShowDaySummary(false);
+                saveData(players, finances, null, [], false);
             };
 
             const updateScore = (teamIdx, val) => {
                 const updatedTeams = [...teams];
                 updatedTeams[teamIdx].score = Math.max(0, updatedTeams[teamIdx].score + val);
                 setTeams(updatedTeams);
-                saveData(players, finances, { teams: updatedTeams, currentMatchTeams });
+                saveData(players, finances, { teams: updatedTeams, currentMatchTeams }, matchHistory);
+            };
+
+            const endMatch = () => {
+                const t1 = teams[currentMatchTeams[0]];
+                const t2 = teams[currentMatchTeams[1]];
+                if (!t1 || !t2) return;
+
+                const newMatch = {
+                    t1: t1.name,
+                    s1: t1.score,
+                    t2: t2.name,
+                    s2: t2.score,
+                    time: formatTime(timerSeconds),
+                    timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                };
+
+                const updatedHistory = [...matchHistory, newMatch];
+                setMatchHistory(updatedHistory);
+                
+                // Reset scores for next match
+                const updatedTeams = teams.map(t => ({ ...t, score: 0 }));
+                setTeams(updatedTeams);
+                setTimerSeconds(0);
+                setIsTimerRunning(false);
+
+                saveData(players, finances, { teams: updatedTeams, currentMatchTeams }, updatedHistory);
+                setCurrentTab('teams');
+            };
+
+            const endDay = () => {
+                if (matchHistory.length === 0) {
+                    alert('Nenhuma partida registrada hoje!');
+                    return;
+                }
+                setShowDaySummary(true);
+                saveData(players, finances, undefined, undefined, true);
+            };
+
+            const resetDay = () => {
+                setMatchHistory([]);
+                setTeams([]);
+                setShowDaySummary(false);
+                saveData(players, finances, null, [], false);
+                setCurrentTab('home');
+            };
+
+            const shareDaySummary = () => {
+                const stats = calculateStats();
+                const sortedStats = Object.entries(stats).sort((a, b) => {
+                    if (b[1].v !== a[1].v) return b[1].v - a[1].v;
+                    return b[1].gp - a[1].gp;
+                });
+
+                let winnerText = "";
+                if (sortedStats.length > 0) {
+                    const topV = sortedStats[0][1].v;
+                    const winners = sortedStats.filter(s => s[1].v === topV);
+                    if (winners.length > 1) winnerText = `🏆 *Empate técnico:* ${winners.map(w => w[0]).join(' e ')}`;
+                    else winnerText = `🏆 *Campeão:* ${winners[0][0]}`;
+                }
+
+                let text = `⚽ *RESUMO DO BABA GOSTOSINHO* ⚽\n\n${winnerText}\n\n`;
+                
+                text += `📊 *CLASSIFICAÇÃO:*\n`;
+                sortedStats.forEach(([name, s]) => {
+                    text += `${name}: ${s.v}V | ${s.e}E | ${s.d}D | ${s.gp} Gols\n`;
+                });
+
+                text += `\n👥 *ELENCOS:*\n`;
+                teams.forEach(t => {
+                    text += `*${t.name}:* ${t.players.map(p => p.name).join(', ')}\n`;
+                });
+
+                text += `\n🔥 *Parabéns a todos!*`;
+
+                if (navigator.share) {
+                    navigator.share({ text });
+                } else {
+                    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+                    window.open(url, '_blank');
+                }
+            };
+
+            const calculateStats = () => {
+                const stats = {};
+                teams.forEach(t => {
+                    stats[t.name] = { v: 0, e: 0, d: 0, gp: 0 };
+                });
+
+                matchHistory.forEach(m => {
+                    if (!stats[m.t1]) stats[m.t1] = { v: 0, e: 0, d: 0, gp: 0 };
+                    if (!stats[m.t2]) stats[m.t2] = { v: 0, e: 0, d: 0, gp: 0 };
+
+                    stats[m.t1].gp += m.s1;
+                    stats[m.t2].gp += m.s2;
+
+                    if (m.s1 > m.s2) {
+                        stats[m.t1].v += 1;
+                        stats[m.t2].d += 1;
+                    } else if (m.s2 > m.s1) {
+                        stats[m.t2].v += 1;
+                        stats[m.t1].d += 1;
+                    } else {
+                        stats[m.t1].e += 1;
+                        stats[m.t2].e += 1;
+                    }
+                });
+                return stats;
             };
 
             const shareMatch = () => {
@@ -631,6 +749,9 @@
                                                                 <button onClick={() => setCurrentTab('teams')} className="flex-1 bg-zinc-100 text-zinc-600 font-bold py-3 rounded-xl text-xs">VER DETALHES</button>
                                                                 <button onClick={generateTeams} className="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-xl text-xs">NOVO SORTEIO</button>
                                                             </div>
+                                                            <button onClick={resetDay} className="w-full mt-2 bg-white text-red-500 font-bold py-3 rounded-xl border border-red-100 text-[10px] flex items-center justify-center gap-2 hover:bg-red-50 transition-colors">
+                                                                <Icon name="refresh-cw" size={14} /> INICIAR NOVO BABA (LIMPAR TUDO)
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 ) : (
@@ -675,43 +796,123 @@
 
                         {/* Teams Tab */}
                         {currentTab === 'teams' && (
-                            <div className="space-y-6">
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-xl font-black">Times Sorteados</h2>
-                                    {isAdminMode && (
-                                        <button onClick={generateTeams} className="text-sm font-medium text-emerald-600 flex items-center gap-1">
-                                            <Icon name="shuffle" size={16} /> Sortear Novamente
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="grid grid-cols-1 gap-4">
-                                    {teams.map((team, idx) => (
-                                        <div key={idx} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-                                            <div className={`${idx % 2 === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} px-4 py-3 text-white flex justify-between items-center`}>
-                                                <h3 className="font-bold">{team.name}</h3>
-                                                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                                                    Média: {(team.players.reduce((acc, p) => acc + p.level, 0) / (team.players.length || 1)).toFixed(1)}
-                                                </span>
-                                            </div>
-                                            <div className="p-4 space-y-2">
-                                                {team.players.map(p => (
-                                                    <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
-                                                        <span className="text-sm font-medium text-zinc-700">{p.name}</span>
-                                                        <div className="flex gap-0.5">
-                                                            {Array.from({ length: p.level }).map((_, i) => (
-                                                                <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
+                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                {showDaySummary ? (
+                                    <div className="space-y-6">
+                                        <div className="text-center space-y-2">
+                                            <h2 className="text-2xl font-black text-zinc-900 tracking-tighter">RESUMO DO DIA</h2>
+                                            <p className="text-zinc-500 text-sm font-medium">Classificação e Elencos</p>
                                         </div>
-                                    ))}
-                                </div>
-                                {isAdminMode && (
-                                    <button onClick={() => setCurrentTab('match')} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
-                                        Começar Partida <Icon name="play" size={20} />
-                                    </button>
+
+                                        <div className="bg-white rounded-3xl border border-zinc-200 shadow-xl overflow-hidden">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-zinc-50 border-b border-zinc-200">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-left font-bold text-zinc-400 uppercase text-[10px]">Time</th>
+                                                        <th className="px-2 py-3 text-center font-bold text-zinc-400 uppercase text-[10px]">V</th>
+                                                        <th className="px-2 py-3 text-center font-bold text-zinc-400 uppercase text-[10px]">E</th>
+                                                        <th className="px-2 py-3 text-center font-bold text-zinc-400 uppercase text-[10px]">D</th>
+                                                        <th className="px-2 py-3 text-center font-bold text-zinc-400 uppercase text-[10px]">GP</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-zinc-100">
+                                                    {Object.entries(calculateStats())
+                                                        .sort((a, b) => {
+                                                            if (b[1].v !== a[1].v) return b[1].v - a[1].v;
+                                                            return b[1].gp - a[1].gp;
+                                                        })
+                                                        .map(([name, s], i) => (
+                                                            <tr key={name} className={i === 0 ? "bg-amber-50/30" : ""}>
+                                                                <td className="px-4 py-4 font-bold text-zinc-900 flex items-center gap-2">
+                                                                    {i === 0 && <Icon name="trophy" size={14} className="text-amber-500" />}
+                                                                    {name}
+                                                                </td>
+                                                                <td className="px-2 py-4 text-center font-medium text-zinc-600">{s.v}</td>
+                                                                <td className="px-2 py-4 text-center font-medium text-zinc-600">{s.e}</td>
+                                                                <td className="px-2 py-4 text-center font-medium text-zinc-600">{s.d}</td>
+                                                                <td className="px-2 py-4 text-center font-bold text-zinc-900">{s.gp}</td>
+                                                            </tr>
+                                                        ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {teams.map((team, idx) => (
+                                                <div key={idx} className="bg-zinc-50 p-4 rounded-2xl border border-zinc-200">
+                                                    <h3 className="font-bold text-zinc-900 mb-2 flex items-center gap-2">
+                                                        <div className="w-2 h-2 rounded-full bg-zinc-400"></div>
+                                                        {team.name}
+                                                    </h3>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {team.players.map((p, pIdx) => (
+                                                            <span key={pIdx} className="text-[10px] bg-white px-2 py-1 rounded-md border border-zinc-200 text-zinc-600">
+                                                                {p.name}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="flex flex-col gap-3">
+                                            <button onClick={shareDaySummary} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
+                                                Compartilhar Resultado <Icon name="share-2" size={20} />
+                                            </button>
+                                            {isAdminMode && (
+                                                <button onClick={resetDay} className="w-full bg-white text-zinc-700 font-bold py-3 rounded-2xl border border-zinc-200 flex items-center justify-center gap-2 text-sm hover:bg-zinc-50 transition-colors">
+                                                    Iniciar Novo Baba <Icon name="refresh-cw" size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center justify-between">
+                                            <h2 className="text-xl font-black">Times Sorteados</h2>
+                                            {isAdminMode && (
+                                                <button onClick={generateTeams} className="text-sm font-medium text-emerald-600 flex items-center gap-1">
+                                                    <Icon name="shuffle" size={16} /> Sortear Novamente
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {teams.map((team, idx) => (
+                                                <div key={idx} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+                                                    <div className={`${idx % 2 === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} px-4 py-3 text-white flex justify-between items-center`}>
+                                                        <h3 className="font-bold">{team.name}</h3>
+                                                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                                                            Média: {(team.players.reduce((acc, p) => acc + p.level, 0) / (team.players.length || 1)).toFixed(1)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="p-4 space-y-2">
+                                                        {team.players.map(p => (
+                                                            <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
+                                                                <span className="text-sm font-medium text-zinc-700">{p.name}</span>
+                                                                <div className="flex gap-0.5">
+                                                                    {Array.from({ length: p.level }).map((_, i) => (
+                                                                        <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {isAdminMode && (
+                                            <div className="flex flex-col gap-3">
+                                                <button onClick={() => setCurrentTab('match')} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
+                                                    Começar Partida <Icon name="play" size={20} />
+                                                </button>
+                                                {matchHistory.length > 0 && (
+                                                    <button onClick={endDay} className="w-full bg-amber-500 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
+                                                        Encerrar Baba do Dia <Icon name="trophy" size={20} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         )}
@@ -786,7 +987,30 @@
                                         })}
                                     </div>
                                 </div>
-                                <button onClick={() => setCurrentTab('teams')} className="w-full py-3 text-sm font-semibold text-zinc-400">Encerrar Partida</button>
+                                
+                                {isAdminMode && (
+                                    <button onClick={endMatch} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
+                                        Encerrar Partida <Icon name="check-circle" size={20} />
+                                    </button>
+                                )}
+
+                                {matchHistory.length > 0 && (
+                                    <div className="space-y-4 pt-4">
+                                        <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest text-center">Histórico de Partidas</h3>
+                                        <div className="space-y-2">
+                                            {matchHistory.slice().reverse().map((m, i) => (
+                                                <div key={i} className="bg-white p-3 rounded-xl border border-zinc-200 flex items-center justify-between text-xs">
+                                                    <div className="flex-1 text-right font-bold text-zinc-600">{m.t1}</div>
+                                                    <div className="mx-3 px-2 py-1 bg-zinc-100 rounded-lg font-black text-zinc-900">
+                                                        {m.s1} x {m.s2}
+                                                    </div>
+                                                    <div className="flex-1 text-left font-bold text-zinc-600">{m.t2}</div>
+                                                    <div className="ml-3 text-[10px] text-zinc-400 font-medium">{m.time}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
