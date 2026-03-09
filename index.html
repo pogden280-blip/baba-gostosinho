@@ -64,6 +64,8 @@
             // Form States
             const [newPlayerName, setNewPlayerName] = useState('');
             const [newPlayerRating, setNewPlayerRating] = useState(3);
+            const [isGoalkeeper, setIsGoalkeeper] = useState(false);
+            const [isPunished, setIsPunished] = useState(false);
             const [financeDesc, setFinanceDesc] = useState('');
             const [financeAmount, setFinanceAmount] = useState('');
             const [financeType, setFinanceType] = useState('income');
@@ -153,19 +155,114 @@
                     id: Date.now().toString(),
                     name: newPlayerName.trim(),
                     level: newPlayerRating,
-                    author: currentUser
+                    author: currentUser,
+                    isGoalkeeper: isGoalkeeper,
+                    isPunished: isPunished
                 };
                 const updatedPlayers = [...players, newPlayer];
                 setPlayers(updatedPlayers);
                 saveData(updatedPlayers, finances);
                 setNewPlayerName('');
                 setNewPlayerRating(3);
+                setIsGoalkeeper(false);
+                setIsPunished(false);
+            };
+
+            const togglePlayerStatus = (id, field) => {
+                const updatedPlayers = players.map(p => {
+                    if (p.id === id) {
+                        return { ...p, [field]: !p[field] };
+                    }
+                    return p;
+                });
+                setPlayers(updatedPlayers);
+                saveData(updatedPlayers, finances);
             };
 
             const removePlayer = (id) => {
                 const updatedPlayers = players.filter(p => p.id !== id);
                 setPlayers(updatedPlayers);
                 saveData(updatedPlayers, finances);
+            };
+
+            const generateWhatsAppList = (isEmpty = false) => {
+                const today = new Date();
+                const nextSaturday = new Date();
+                nextSaturday.setDate(today.getDate() + (6 - today.getDay() + 7) % 7);
+                const dateStr = nextSaturday.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                
+                const activePlayers = isEmpty ? [] : players.filter(p => !p.isGoalkeeper && !p.isPunished);
+                const goalkeepers = isEmpty ? [] : players.filter(p => p.isGoalkeeper && !p.isPunished);
+                const punished = isEmpty ? [] : players.filter(p => p.isPunished);
+
+                let listText = `*⚽💨💨🏃🏻LISTA DO BABA GOSTOSINHO*\n\n`;
+                listText += ` *${dateStr} - Sábado* ⚽🏆\n`;
+                listText += `*Horário - 15:30 horas da tarde*\n`;
+                listText += ` *Valor: 8,00* \n`;
+                listText += ` *Chave PIX : 7799930-4025*\n`;
+                listText += `*Esmael de Souza Silva*\n`;
+                listText += `⚠️ *OBRIGATÓRIO COLETES AZUL E VERMELHO ⚠️*\n\n`;
+
+                for (let i = 1; i <= 24; i++) {
+                    const p = activePlayers[i-1];
+                    const num = i === 13 ? '🇧🇷' : i;
+                    listText += `${num}- ${p ? p.name : ''}\n`;
+                }
+
+                listText += `\nSuplentes:\n`;
+                for (let i = 1; i <= 4; i++) {
+                    const p = activePlayers[i + 23];
+                    listText += `${i}- ${p ? p.name : ''}\n`;
+                }
+
+                listText += `\n*Goleiros*\n\n`;
+                for (let i = 1; i <= 4; i++) {
+                    const p = goalkeepers[i-1];
+                    listText += `${i}- ${p ? p.name : ''}\n`;
+                }
+
+                listText += `*LISTA DE PUNIDOS - R$ 15,00*\n`;
+                for (let i = 1; i <= 3; i++) {
+                    const p = punished[i-1];
+                    listText += `${i}- ${p ? p.name : ''}\n`;
+                }
+
+                listText += `\n*OBS:* \n\n`;
+                listText += `*OBS: LIMITE MÁXIMO DE 4 TIMES*\n`;
+                listText += `*_⚠️🤑PAGAMENTO ANTES DE COMEÇAR, VAI SER FEITO A CHAMADA QUEM NÃO PAGOU ANTES NÃO JOGA🤑⚠️_*\n\n`;
+                listText += `*🥵🍶🥛LEVEM SUAS GARRAFAS DE ÁGUA⚠️*\n\n`;
+                listText += `segue o grupo:\n\n`;
+                listText += `https://chat.whatsapp.com/HmhI6eAXcXy4cBAIZzEnl8?mode=hqctswi`;
+
+                if (isEmpty) {
+                    window.open(`https://wa.me/?text=${encodeURIComponent(listText)}`, '_blank');
+                } else {
+                    navigator.clipboard.writeText(listText);
+                    alert('Lista copiada para o WhatsApp!');
+                }
+            };
+
+            const sendTeamsToWhatsApp = () => {
+                if (teamA.players.length === 0 && teamB.players.length === 0) {
+                    alert('Nenhum sorteio realizado ainda!');
+                    return;
+                }
+
+                let text = `⚽ *SORTEIO REALIZADO - BABA GOSTOSINHO* ⚽\n\n`;
+                
+                text += `🟢 *TIME A*\n`;
+                teamA.players.forEach((p, i) => {
+                    text += `${i + 1}. ${p.name}\n`;
+                });
+                
+                text += `\n⚫ *TIME B*\n`;
+                teamB.players.forEach((p, i) => {
+                    text += `${i + 1}. ${p.name}\n`;
+                });
+                
+                text += `\n🔥 *Bom jogo a todos!*`;
+
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
             };
 
             const addFinanceEntry = () => {
@@ -194,7 +291,7 @@
 
             const generateTeams = () => {
                 if (players.length < 2) return;
-                const sorted = [...players].sort((a, b) => b.level - a.level);
+                const sorted = [...players].filter(p => !p.isPunished).sort((a, b) => b.level - a.level);
                 const a = [];
                 const b = [];
                 sorted.forEach((p, i) => {
@@ -298,13 +395,13 @@
                                     <div className="space-y-6">
                                         <h2 className="text-2xl font-black tracking-tight text-zinc-900">Painel ADM</h2>
                                         <div className="flex bg-zinc-200/50 p-1 rounded-xl">
-                                            {['finance', 'members', 'draw'].map((tab) => (
+                                            {['finance', 'members', 'draw', 'list'].map((tab) => (
                                                 <button 
                                                     key={tab}
                                                     onClick={() => setAdminSubTab(tab)} 
-                                                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${adminSubTab === tab ? 'bg-white shadow-sm text-emerald-600' : 'text-zinc-500'}`}
+                                                    className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${adminSubTab === tab ? 'bg-white shadow-sm text-emerald-600' : 'text-zinc-500'}`}
                                                 >
-                                                    {tab === 'finance' ? 'FINANCEIRO' : tab === 'members' ? 'MEMBROS' : 'SORTEIO'}
+                                                    {tab === 'finance' ? 'FINANCEIRO' : tab === 'members' ? 'MEMBROS' : tab === 'draw' ? 'SORTEIO' : 'LISTA'}
                                                 </button>
                                             ))}
                                         </div>
@@ -372,6 +469,20 @@
                                                                 ))}
                                                             </div>
                                                         </div>
+                                                        <div className="flex gap-2">
+                                                            <button 
+                                                                onClick={() => setIsGoalkeeper(!isGoalkeeper)} 
+                                                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${isGoalkeeper ? 'bg-emerald-100 border-emerald-500 text-emerald-600' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                                                            >
+                                                                GOLEIRO
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => setIsPunished(!isPunished)} 
+                                                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${isPunished ? 'bg-red-100 border-red-500 text-red-600' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                                                            >
+                                                                PUNIDO
+                                                            </button>
+                                                        </div>
                                                         <button onClick={addPlayer} className="w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl">Confirmar</button>
                                                     </div>
                                                 </section>
@@ -383,7 +494,11 @@
                                                                     {p.name.charAt(0).toUpperCase()}
                                                                 </div>
                                                                 <div>
-                                                                    <p className="font-semibold text-zinc-800 flex items-center">{p.name}{getAuthorTag(p.author)}</p>
+                                                                    <p className="font-semibold text-zinc-800 flex items-center">
+                                                                        {p.name}{getAuthorTag(p.author)}
+                                                                        {p.isGoalkeeper && <span className="ml-2 text-[8px] bg-amber-100 text-amber-600 px-1 rounded">GK</span>}
+                                                                        {p.isPunished && <span className="ml-2 text-[8px] bg-red-100 text-red-600 px-1 rounded">PUNIDO</span>}
+                                                                    </p>
                                                                     <div className="flex gap-0.5">
                                                                         {Array.from({ length: p.level }).map((_, i) => (
                                                                             <Icon key={i} name="star" size={10} fill="currentColor" className="text-amber-400" />
@@ -391,9 +506,14 @@
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                            <button onClick={() => removePlayer(p.id)} className="p-2 text-zinc-300 hover:text-red-500">
-                                                                <Icon name="trash-2" size={18} />
-                                                            </button>
+                                                            <div className="flex gap-2">
+                                                                <button onClick={() => togglePlayerStatus(p.id, 'isGoalkeeper')} className={`p-2 rounded-lg ${p.isGoalkeeper ? 'text-amber-500 bg-amber-50' : 'text-zinc-300'}`}>
+                                                                    <Icon name="shield" size={18} />
+                                                                </button>
+                                                                <button onClick={() => removePlayer(p.id)} className="p-2 text-zinc-300 hover:text-red-500">
+                                                                    <Icon name="trash-2" size={18} />
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -408,9 +528,29 @@
                                                 <h3 className="text-xl font-bold">Sorteio de Times</h3>
                                                 <div className="bg-zinc-50 p-4 rounded-2xl border flex justify-between items-center">
                                                     <span className="text-sm font-bold text-zinc-600">Membros Ativos:</span>
-                                                    <span className="text-xl font-black text-emerald-600">{players.length}</span>
+                                                    <span className="text-xl font-black text-emerald-600">{players.filter(p => !p.isPunished).length}</span>
                                                 </div>
                                                 <button onClick={generateTeams} className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-lg">REALIZAR SORTEIO</button>
+                                            </div>
+                                        )}
+
+                                        {adminSubTab === 'list' && (
+                                            <div className="bg-white p-8 rounded-3xl border border-zinc-200 text-center space-y-6">
+                                                <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+                                                    <Icon name="message-square" size={40} />
+                                                </div>
+                                                <h3 className="text-xl font-bold">Lista WhatsApp</h3>
+                                                <p className="text-sm text-zinc-500">Gere o texto formatado para postar no grupo.</p>
+                                                
+                                                <div className="space-y-3">
+                                                    <button onClick={sendTeamsToWhatsApp} className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
+                                                        <Icon name="shuffle" size={20} /> ENVIAR SORTEIO PRONTO
+                                                    </button>
+                                                    
+                                                    <button onClick={() => generateWhatsAppList(true)} className="w-full bg-zinc-800 text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
+                                                        <Icon name="send" size={20} /> ENVIAR LISTA VAZIA
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
