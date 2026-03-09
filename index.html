@@ -415,9 +415,9 @@
 
             try {
                 const response = await fetch('/api/data');
+                const data = await response.json();
+
                 if (response.ok) {
-                    const data = await response.json();
-                    
                     // Só atualiza se houver dados válidos
                     if (data && (data.players || data.finances)) {
                         players = data.players || [];
@@ -436,11 +436,11 @@
                         if (indicator) indicator.className = "w-2 h-2 rounded-full bg-zinc-400";
                     }
                 } else {
-                    throw new Error("Erro na resposta do servidor");
+                    throw new Error(data.error || "Erro na resposta do servidor");
                 }
             } catch (error) {
                 console.error("Erro ao carregar dados da nuvem:", error);
-                if (statusText) statusText.innerText = "Erro de Conexão";
+                if (statusText) statusText.innerText = "Erro: " + error.message;
                 if (indicator) indicator.className = "w-2 h-2 rounded-full bg-red-500";
             }
         }
@@ -459,15 +459,17 @@
                     body: JSON.stringify({ players, finances })
                 });
                 
+                const data = await response.json();
+
                 if (response.ok) {
                     if (statusText) statusText.innerText = "Nuvem Atualizada";
                     if (indicator) indicator.className = "w-2 h-2 rounded-full bg-emerald-500";
                 } else {
-                    throw new Error("Erro ao salvar");
+                    throw new Error(data.error || "Erro ao salvar");
                 }
             } catch (error) {
                 console.error("Erro ao sincronizar com a nuvem:", error);
-                if (statusText) statusText.innerText = "Erro ao Salvar";
+                if (statusText) statusText.innerText = "Erro: " + error.message;
                 if (indicator) indicator.className = "w-2 h-2 rounded-full bg-red-500";
             }
         }
