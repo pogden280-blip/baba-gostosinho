@@ -19,6 +19,10 @@ async function startServer() {
   app.get("/api/data", async (req, res) => {
     console.log("GET /api/data - Fetching from JSONBin...");
     try {
+      if (!BIN_ID || !MASTER_KEY) {
+        throw new Error("JSONBin credentials missing");
+      }
+
       const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
         headers: {
           "X-Master-Key": MASTER_KEY,
@@ -28,7 +32,11 @@ async function startServer() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`JSONBin GET error: ${response.status} - ${errorText}`);
-        return res.status(response.status).json({ error: "JSONBin API Error", details: errorText });
+        return res.status(response.status).json({ 
+          error: "JSONBin API Error", 
+          status: response.status,
+          details: errorText 
+        });
       }
 
       const data = await response.json();
@@ -41,8 +49,13 @@ async function startServer() {
   });
 
   app.put("/api/data", async (req, res) => {
-    console.log("PUT /api/data - Saving to JSONBin...");
+    const bodySize = JSON.stringify(req.body).length;
+    console.log(`PUT /api/data - Saving to JSONBin... (Size: ${bodySize} bytes)`);
     try {
+      if (!BIN_ID || !MASTER_KEY) {
+        throw new Error("JSONBin credentials missing");
+      }
+
       const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
         method: "PUT",
         headers: {
@@ -55,7 +68,11 @@ async function startServer() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`JSONBin PUT error: ${response.status} - ${errorText}`);
-        return res.status(response.status).json({ error: "JSONBin API Error", details: errorText });
+        return res.status(response.status).json({ 
+          error: "JSONBin API Error", 
+          status: response.status,
+          details: errorText 
+        });
       }
 
       const data = await response.json();
