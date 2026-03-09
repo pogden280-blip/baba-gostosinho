@@ -64,6 +64,7 @@
             // Form States
             const [newPlayerName, setNewPlayerName] = useState('');
             const [newPlayerRating, setNewPlayerRating] = useState(3);
+            const [newPlayerType, setNewPlayerType] = useState('diarista');
             const [isGoalkeeper, setIsGoalkeeper] = useState(false);
             const [isPunished, setIsPunished] = useState(false);
             const [financeDesc, setFinanceDesc] = useState('');
@@ -71,8 +72,8 @@
             const [financeType, setFinanceType] = useState('income');
 
             // Match States
-            const [teamA, setTeamA] = useState({ players: [], score: 0 });
-            const [teamB, setTeamB] = useState({ players: [], score: 0 });
+            const [teams, setTeams] = useState([]); // Array of { name: 'Time 1', players: [], score: 0 }
+            const [currentMatchTeams, setCurrentMatchTeams] = useState([0, 1]); // Indices of teams in match
             const [timerSeconds, setTimerSeconds] = useState(0);
             const [isTimerRunning, setIsTimerRunning] = useState(false);
             const timerRef = useRef(null);
@@ -88,6 +89,19 @@
                             const data = await response.json();
                             setPlayers(data.record.players || []);
                             setFinances(data.record.finances || []);
+                            if (data.record.lastDraw) {
+                                if (data.record.lastDraw.teams) {
+                                    setTeams(data.record.lastDraw.teams);
+                                    if (data.record.lastDraw.currentMatchTeams) {
+                                        setCurrentMatchTeams(data.record.lastDraw.currentMatchTeams);
+                                    }
+                                } else if (data.record.lastDraw.teamA) {
+                                    setTeams([
+                                        { ...data.record.lastDraw.teamA, name: 'Time 1' },
+                                        { ...data.record.lastDraw.teamB, name: 'Time 2' }
+                                    ]);
+                                }
+                            }
                         }
                     } catch (error) {
                         console.error("Erro ao carregar dados:", error);
@@ -99,15 +113,20 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances) => {
+            const saveData = async (newPlayers, newFinances, lastDraw) => {
                 try {
+                    const currentDraw = lastDraw !== undefined ? lastDraw : (teams.length > 0 ? { teams, currentMatchTeams } : null);
                     await fetch(API_URL, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
                             'X-Master-Key': MASTER_KEY
                         },
-                        body: JSON.stringify({ players: newPlayers, finances: newFinances })
+                        body: JSON.stringify({ 
+                            players: newPlayers, 
+                            finances: newFinances,
+                            lastDraw: currentDraw
+                        })
                     });
                 } catch (error) {
                     console.error("Erro ao salvar dados:", error);
@@ -155,6 +174,7 @@
                     id: Date.now().toString(),
                     name: newPlayerName.trim(),
                     level: newPlayerRating,
+                    type: newPlayerType,
                     author: currentUser,
                     isGoalkeeper: isGoalkeeper,
                     isPunished: isPunished
@@ -164,8 +184,20 @@
                 saveData(updatedPlayers, finances);
                 setNewPlayerName('');
                 setNewPlayerRating(3);
+                setNewPlayerType('diarista');
                 setIsGoalkeeper(false);
                 setIsPunished(false);
+            };
+
+            const updatePlayer = (id, field, value) => {
+                const updatedPlayers = players.map(p => {
+                    if (p.id === id) {
+                        return { ...p, [field]: value };
+                    }
+                    return p;
+                });
+                setPlayers(updatedPlayers);
+                saveData(updatedPlayers, finances);
             };
 
             const togglePlayerStatus = (id, field) => {
@@ -243,24 +275,22 @@
             };
 
             const sendTeamsToWhatsApp = () => {
-                if (teamA.players.length === 0 && teamB.players.length === 0) {
+                if (teams.length === 0) {
                     alert('Nenhum sorteio realizado ainda!');
                     return;
                 }
 
                 let text = `⚽ *SORTEIO REALIZADO - BABA GOSTOSINHO* ⚽\n\n`;
                 
-                text += `🟢 *TIME A*\n`;
-                teamA.players.forEach((p, i) => {
-                    text += `${i + 1}. ${p.name}\n`;
+                teams.forEach((team, idx) => {
+                    text += `${idx === 0 ? '🟢' : idx === 1 ? '⚫' : idx === 2 ? '🔵' : '🔴'} *${team.name}*\n`;
+                    team.players.forEach((p, i) => {
+                        text += `${i + 1}. ${p.name}\n`;
+                    });
+                    text += `\n`;
                 });
                 
-                text += `\n⚫ *TIME B*\n`;
-                teamB.players.forEach((p, i) => {
-                    text += `${i + 1}. ${p.name}\n`;
-                });
-                
-                text += `\n🔥 *Bom jogo a todos!*`;
+                text += `🔥 *Bom jogo a todos!*`;
 
                 window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
             };
@@ -291,30 +321,65 @@
 
             const generateTeams = () => {
                 if (players.length < 2) return;
-                const sorted = [...players].filter(p => !p.isPunished).sort((a, b) => b.level - a.level);
-                const a = [];
-                const b = [];
+                const activePlayers = [...players].filter(p => !p.isPunished);
+                const sorted = activePlayers.sort((a, b) => b.level - a.level);
+                
+                let numTeams = 2;
+                if (sorted.length > 18) numTeams = 4;
+                else if (sorted.length > 12) numTeams = 3;
+
+                const newTeams = Array.from({ length: numTeams }, (_, i) => ({
+                    id: i + 1,
+                    name: `Time ${i + 1}`,
+                    players: [],
+                    score: 0
+                }));
+                
                 sorted.forEach((p, i) => {
-                    if (i % 2 === 0) a.push(p);
-                    else b.push(p);
+                    let teamIndex;
+                    const round = Math.floor(i / numTeams);
+                    if (round % 2 === 0) {
+                        teamIndex = i % numTeams;
+                    } else {
+                        teamIndex = (numTeams - 1) - (i % numTeams);
+                    }
+                    newTeams[teamIndex].players.push(p);
                 });
-                const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
-                setTeamA({ players: shuffle(a), score: 0 });
-                setTeamB({ players: shuffle(b), score: 0 });
+
+                newTeams.forEach(t => {
+                    t.players = t.players.sort(() => Math.random() - 0.5);
+                });
+
+                setTeams(newTeams);
+                setCurrentMatchTeams([0, 1]);
+                saveData(players, finances, { teams: newTeams, currentMatchTeams: [0, 1] });
                 setCurrentTab('teams');
             };
 
-            const updateScore = (team, val) => {
-                if (team === 'a') setTeamA({ ...teamA, score: Math.max(0, teamA.score + val) });
-                else setTeamB({ ...teamB, score: Math.max(0, teamB.score + val) });
+            const deleteDraw = () => {
+                if (confirm('Deseja realmente excluir o último sorteio?')) {
+                    setTeams([]);
+                    saveData(players, finances, null);
+                }
+            };
+
+            const updateScore = (teamIdx, val) => {
+                const updatedTeams = [...teams];
+                updatedTeams[teamIdx].score = Math.max(0, updatedTeams[teamIdx].score + val);
+                setTeams(updatedTeams);
+                saveData(players, finances, { teams: updatedTeams, currentMatchTeams });
             };
 
             const shareMatch = () => {
+                const t1 = teams[currentMatchTeams[0]];
+                const t2 = teams[currentMatchTeams[1]];
+                if (!t1 || !t2) return;
+
                 const text = `⚽ *Baba gostosinho - Resumo da Partida* ⚽\n\n` +
-                    `Placar: Time A ${teamA.score} x ${teamB.score} Time B\n` +
+                    `Placar: ${t1.name} ${t1.score} x ${t2.score} ${t2.name}\n` +
                     `Tempo: ${formatTime(timerSeconds)}\n\n` +
-                    `*Time A:* ${teamA.players.map(p => p.name).join(', ')}\n` +
-                    `*Time B:* ${teamB.players.map(p => p.name).join(', ')}\n\n` +
+                    `*${t1.name}:* ${t1.players.map(p => p.name).join(', ')}\n` +
+                    `*${t2.name}:* ${t2.players.map(p => p.name).join(', ')}\n\n` +
                     `Organizado via Baba gostosinho!`;
 
                 if (navigator.share) {
@@ -471,6 +536,20 @@
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <button 
+                                                                onClick={() => setNewPlayerType('mensalista')} 
+                                                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${newPlayerType === 'mensalista' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                                                            >
+                                                                MENSALISTA
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => setNewPlayerType('diarista')} 
+                                                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${newPlayerType === 'diarista' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                                                            >
+                                                                DIARISTA
+                                                            </button>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button 
                                                                 onClick={() => setIsGoalkeeper(!isGoalkeeper)} 
                                                                 className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${isGoalkeeper ? 'bg-emerald-100 border-emerald-500 text-emerald-600' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
                                                             >
@@ -498,10 +577,15 @@
                                                                         {p.name}{getAuthorTag(p.author)}
                                                                         {p.isGoalkeeper && <span className="ml-2 text-[8px] bg-amber-100 text-amber-600 px-1 rounded">GK</span>}
                                                                         {p.isPunished && <span className="ml-2 text-[8px] bg-red-100 text-red-600 px-1 rounded">PUNIDO</span>}
+                                                                        <span className={`ml-2 text-[8px] px-1 rounded cursor-pointer ${p.type === 'mensalista' ? 'bg-emerald-100 text-emerald-600' : 'bg-zinc-100 text-zinc-500'}`} onClick={() => updatePlayer(p.id, 'type', p.type === 'mensalista' ? 'diarista' : 'mensalista')}>
+                                                                            {p.type?.toUpperCase() || 'DIARISTA'}
+                                                                        </span>
                                                                     </p>
                                                                     <div className="flex gap-0.5">
-                                                                        {Array.from({ length: p.level }).map((_, i) => (
-                                                                            <Icon key={i} name="star" size={10} fill="currentColor" className="text-amber-400" />
+                                                                        {[1, 2, 3, 4, 5].map((star) => (
+                                                                            <button key={star} onClick={() => updatePlayer(p.id, 'level', star)} className={`p-0.5 ${p.level >= star ? 'text-amber-400' : 'text-zinc-200'}`}>
+                                                                                <Icon name="star" size={12} fill={p.level >= star ? "currentColor" : "none"} />
+                                                                            </button>
                                                                         ))}
                                                                     </div>
                                                                 </div>
@@ -521,16 +605,47 @@
                                         )}
 
                                         {adminSubTab === 'draw' && (
-                                            <div className="bg-white p-8 rounded-3xl border border-zinc-200 text-center space-y-6">
-                                                <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto text-zinc-400">
-                                                    <Icon name="shuffle" size={40} />
-                                                </div>
-                                                <h3 className="text-xl font-bold">Sorteio de Times</h3>
-                                                <div className="bg-zinc-50 p-4 rounded-2xl border flex justify-between items-center">
-                                                    <span className="text-sm font-bold text-zinc-600">Membros Ativos:</span>
-                                                    <span className="text-xl font-black text-emerald-600">{players.filter(p => !p.isPunished).length}</span>
-                                                </div>
-                                                <button onClick={generateTeams} className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-lg">REALIZAR SORTEIO</button>
+                                            <div className="space-y-6">
+                                                {teams.length > 0 ? (
+                                                    <div className="space-y-4">
+                                                        <div className="bg-white p-6 rounded-3xl border border-zinc-200 space-y-4">
+                                                            <div className="flex items-center justify-between">
+                                                                <h3 className="font-bold text-zinc-800">Último Sorteio</h3>
+                                                                <button onClick={deleteDraw} className="text-red-500 p-2 hover:bg-red-50 rounded-xl transition-colors">
+                                                                    <Icon name="trash-2" size={20} />
+                                                                </button>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                {teams.map((team, idx) => (
+                                                                    <div key={idx} className={`${idx % 2 === 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-zinc-50 border-zinc-100'} p-3 rounded-2xl border`}>
+                                                                        <p className={`text-[10px] font-bold ${idx % 2 === 0 ? 'text-emerald-600' : 'text-zinc-600'} uppercase mb-2`}>{team.name}</p>
+                                                                        <div className="space-y-1">
+                                                                            {team.players.map(p => (
+                                                                                <p key={p.id} className={`text-[10px] font-medium ${idx % 2 === 0 ? 'text-emerald-900' : 'text-zinc-900'} truncate`}>{p.name}</p>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            <div className="flex gap-2 pt-2">
+                                                                <button onClick={() => setCurrentTab('teams')} className="flex-1 bg-zinc-100 text-zinc-600 font-bold py-3 rounded-xl text-xs">VER DETALHES</button>
+                                                                <button onClick={generateTeams} className="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-xl text-xs">NOVO SORTEIO</button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-white p-8 rounded-3xl border border-zinc-200 text-center space-y-6">
+                                                        <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto text-zinc-400">
+                                                            <Icon name="shuffle" size={40} />
+                                                        </div>
+                                                        <h3 className="text-xl font-bold">Sorteio de Times</h3>
+                                                        <div className="bg-zinc-50 p-4 rounded-2xl border flex justify-between items-center">
+                                                            <span className="text-sm font-bold text-zinc-600">Membros Ativos:</span>
+                                                            <span className="text-xl font-black text-emerald-600">{players.filter(p => !p.isPunished).length}</span>
+                                                        </div>
+                                                        <button onClick={generateTeams} className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-lg">REALIZAR SORTEIO</button>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -570,16 +685,16 @@
                                     )}
                                 </div>
                                 <div className="grid grid-cols-1 gap-4">
-                                    {[ {t: teamA, n: 'A', c: 'bg-emerald-600'}, {t: teamB, n: 'B', c: 'bg-zinc-800'} ].map(team => (
-                                        <div key={team.n} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-                                            <div className={`${team.c} px-4 py-3 text-white flex justify-between items-center`}>
-                                                <h3 className="font-bold">Time {team.n}</h3>
+                                    {teams.map((team, idx) => (
+                                        <div key={idx} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+                                            <div className={`${idx % 2 === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} px-4 py-3 text-white flex justify-between items-center`}>
+                                                <h3 className="font-bold">{team.name}</h3>
                                                 <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                                                    Média: {(team.t.players.reduce((acc, p) => acc + p.level, 0) / (team.t.players.length || 1)).toFixed(1)}
+                                                    Média: {(team.players.reduce((acc, p) => acc + p.level, 0) / (team.players.length || 1)).toFixed(1)}
                                                 </span>
                                             </div>
                                             <div className="p-4 space-y-2">
-                                                {team.t.players.map(p => (
+                                                {team.players.map(p => (
                                                     <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
                                                         <span className="text-sm font-medium text-zinc-700">{p.name}</span>
                                                         <div className="flex gap-0.5">
@@ -619,19 +734,57 @@
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex items-center justify-between gap-4">
-                                    {[ {t: 'a', s: teamA.score, n: 'Time A', c: 'text-emerald-600'}, {t: 'b', s: teamB.score, n: 'Time B', c: 'text-zinc-800'} ].map(team => (
-                                        <div key={team.t} className="flex-1 bg-white p-6 rounded-3xl border text-center space-y-4">
-                                            <p className={`text-xs font-bold uppercase tracking-widest ${team.c}`}>{team.n}</p>
-                                            <p className="text-6xl font-black">{team.s}</p>
-                                            {isAdminMode && (
-                                                <div className="flex justify-center gap-2">
-                                                    <button onClick={() => updateScore(team.t, -1)} className="p-2 bg-zinc-100 rounded-xl"><Icon name="minus" size={20} /></button>
-                                                    <button onClick={() => updateScore(team.t, 1)} className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><Icon name="plus" size={20} /></button>
-                                                </div>
-                                            )}
+                                <div className="flex flex-col gap-4">
+                                    {teams.length > 2 && (
+                                        <div className="bg-white p-4 rounded-2xl border border-zinc-200 space-y-3">
+                                            <p className="text-[10px] font-bold text-zinc-400 uppercase text-center">Selecionar Times em Campo</p>
+                                            <div className="flex gap-2">
+                                                <select 
+                                                    disabled={!isAdminMode}
+                                                    value={currentMatchTeams[0]} 
+                                                    onChange={(e) => {
+                                                        const newMatch = [parseInt(e.target.value), currentMatchTeams[1]];
+                                                        setCurrentMatchTeams(newMatch);
+                                                        saveData(players, finances, { teams, currentMatchTeams: newMatch });
+                                                    }}
+                                                    className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-100"
+                                                >
+                                                    {teams.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
+                                                </select>
+                                                <div className="flex items-center text-zinc-300 font-bold">VS</div>
+                                                <select 
+                                                    disabled={!isAdminMode}
+                                                    value={currentMatchTeams[1]} 
+                                                    onChange={(e) => {
+                                                        const newMatch = [currentMatchTeams[0], parseInt(e.target.value)];
+                                                        setCurrentMatchTeams(newMatch);
+                                                        saveData(players, finances, { teams, currentMatchTeams: newMatch });
+                                                    }}
+                                                    className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-100"
+                                                >
+                                                    {teams.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
+                                                </select>
+                                            </div>
                                         </div>
-                                    ))}
+                                    )}
+                                    <div className="flex items-center justify-between gap-4">
+                                        {[currentMatchTeams[0], currentMatchTeams[1]].map((teamIdx, i) => {
+                                            const team = teams[teamIdx];
+                                            if (!team) return null;
+                                            return (
+                                                <div key={i} className="flex-1 bg-white p-6 rounded-3xl border text-center space-y-4">
+                                                    <p className={`text-xs font-bold uppercase tracking-widest ${i === 0 ? 'text-emerald-600' : 'text-zinc-800'}`}>{team.name}</p>
+                                                    <p className="text-6xl font-black">{team.score}</p>
+                                                    {isAdminMode && (
+                                                        <div className="flex justify-center gap-2">
+                                                            <button onClick={() => updateScore(teamIdx, -1)} className="p-2 bg-zinc-100 rounded-xl"><Icon name="minus" size={20} /></button>
+                                                            <button onClick={() => updateScore(teamIdx, 1)} className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><Icon name="plus" size={20} /></button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                                 <button onClick={() => setCurrentTab('teams')} className="w-full py-3 text-sm font-semibold text-zinc-400">Encerrar Partida</button>
                             </div>
