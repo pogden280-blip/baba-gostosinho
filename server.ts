@@ -7,6 +7,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+console.log(">>> LOADING SERVER.TS AT TOP LEVEL <<<");
+
 dotenv.config();
 
 async function startServer() {
@@ -21,27 +23,31 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
-  const apiRouter = express.Router();
-
-  // API Logging
-  apiRouter.use((req, res, next) => {
-    console.log(`[API] ${req.method} ${req.path}`);
+  // API Routes
+  app.use("/api", (req, res, next) => {
+    res.setHeader("X-Backend-Server", "Express-Vite-Custom");
     next();
+  });
+
+  app.get("/api/ping", (req, res) => {
+    console.log("[API] Ping requested");
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  app.get("/api/test", (req, res) => {
+    console.log("[API] Test requested - Sending JSON response");
+    res.status(200).json({ message: "API is working!", timestamp: new Date().toISOString() });
   });
 
   const BIN_ID = (process.env.JSONBIN_BIN_ID || "69af06d2ae596e708f71a0ef").trim();
   const MASTER_KEY = (process.env.JSONBIN_MASTER_KEY || "$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi").trim();
 
-  console.log(`Configured JSONBin - ID: ${BIN_ID.substring(0, 4)}... Key: ${MASTER_KEY.substring(0, 10)}...`);
-
-  // Health check
-  app.get("/api/ping", (req, res) => {
-    res.json({ status: "ok", time: new Date().toISOString() });
-  });
-
-  app.get("/api/test", (req, res) => {
-    res.json({ message: "API is working!", timestamp: new Date().toISOString() });
-  });
+  console.log("-----------------------------------------");
+  console.log("SERVER STARTING...");
+  console.log(`PORT: ${PORT}`);
+  console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`BIN_ID: ${BIN_ID.substring(0, 5)}...`);
+  console.log("-----------------------------------------");
 
   // JSONBin Proxy Endpoints
   const handleGetData = async (req, res) => {
@@ -134,20 +140,8 @@ async function startServer() {
     }
   };
 
-  // Mount routes to Router
-  apiRouter.get("/ping", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
-  apiRouter.get("/test", (req, res) => res.json({ message: "API is working!" }));
-  apiRouter.get("/data", handleGetData);
-  apiRouter.put("/data", handlePutData);
-
-  // Catch-all for API Router
-  apiRouter.all("*", (req, res) => {
-    console.warn(`[API Router] 404 - Not Found: ${req.method} ${req.path}`);
-    res.status(404).json({ error: "API Route not found", path: req.path });
-  });
-
-  // Mount API Router to App
-  app.use("/api", apiRouter);
+  app.get("/api/data", handleGetData);
+  app.put("/api/data", handlePutData);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
