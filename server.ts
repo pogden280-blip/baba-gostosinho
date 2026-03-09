@@ -15,6 +15,12 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
+  // Logging middleware for API
+  app.use("/api", (req, res, next) => {
+    console.log(`[API] ${req.method} ${req.path}`);
+    next();
+  });
+
   const BIN_ID = (process.env.JSONBIN_BIN_ID || "69af06d2ae596e708f71a0ef").trim();
   const MASTER_KEY = (process.env.JSONBIN_MASTER_KEY || "$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi").trim();
 
@@ -25,8 +31,12 @@ async function startServer() {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
+  app.get("/api/test", (req, res) => {
+    res.json({ message: "API is working!", timestamp: new Date().toISOString() });
+  });
+
   // JSONBin Proxy Endpoints
-  app.get(["/api/data", "/api/data/"], async (req, res) => {
+  const handleGetData = async (req, res) => {
     console.log("GET /api/data - Fetching from JSONBin...");
     try {
       if (!BIN_ID || !MASTER_KEY) {
@@ -67,9 +77,9 @@ async function startServer() {
       console.error("GET /api/data - Exception:", error);
       res.status(500).json({ error: error.message });
     }
-  });
+  };
 
-  app.put(["/api/data", "/api/data/"], async (req, res) => {
+  const handlePutData = async (req, res) => {
     const bodySize = JSON.stringify(req.body).length;
     console.log(`PUT /api/data - Saving to JSONBin... (Size: ${bodySize} bytes)`);
     try {
@@ -114,6 +124,17 @@ async function startServer() {
       console.error("PUT /api/data - Exception:", error);
       res.status(500).json({ error: error.message });
     }
+  };
+
+  app.get("/api/data", handleGetData);
+  app.get("/api/data/", handleGetData);
+  app.put("/api/data", handlePutData);
+  app.put("/api/data/", handlePutData);
+
+  // Catch-all for API routes that don't match
+  app.all("/api/*", (req, res) => {
+    console.warn(`[API] 404 - Route not found: ${req.method} ${req.path}`);
+    res.status(404).json({ error: "API Route not found", path: req.path });
   });
 
   // Vite middleware for development
@@ -135,4 +156,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});
