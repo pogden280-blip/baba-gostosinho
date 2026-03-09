@@ -10,16 +10,15 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
-  const BIN_ID = process.env.JSONBIN_BIN_ID;
-  const MASTER_KEY = process.env.JSONBIN_MASTER_KEY;
+  const BIN_ID = process.env.JSONBIN_BIN_ID || "69af06d2ae596e708f71a0ef";
+  const MASTER_KEY = process.env.JSONBIN_MASTER_KEY || "$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi";
+
+  console.log(`Configured JSONBin - ID: ${BIN_ID.substring(0, 4)}... Key: ${MASTER_KEY.substring(0, 10)}...`);
 
   // JSONBin Proxy Endpoints
   app.get("/api/data", async (req, res) => {
+    console.log("GET /api/data - Fetching from JSONBin...");
     try {
-      if (!BIN_ID || !MASTER_KEY) {
-        return res.status(500).json({ error: "JSONBin credentials not configured" });
-      }
-
       const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
         headers: {
           "X-Master-Key": MASTER_KEY,
@@ -27,23 +26,23 @@ async function startServer() {
       });
 
       if (!response.ok) {
-        throw new Error(`JSONBin error: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`JSONBin GET error: ${response.status} - ${errorText}`);
+        return res.status(response.status).json({ error: "JSONBin API Error", details: errorText });
       }
 
       const data = await response.json();
-      res.json(data.record);
+      console.log("GET /api/data - Success");
+      res.json(data.record || { players: [], finances: [] });
     } catch (error: any) {
-      console.error("Error fetching from JSONBin:", error);
+      console.error("GET /api/data - Exception:", error);
       res.status(500).json({ error: error.message });
     }
   });
 
   app.put("/api/data", async (req, res) => {
+    console.log("PUT /api/data - Saving to JSONBin...");
     try {
-      if (!BIN_ID || !MASTER_KEY) {
-        return res.status(500).json({ error: "JSONBin credentials not configured" });
-      }
-
       const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
         method: "PUT",
         headers: {
@@ -54,13 +53,16 @@ async function startServer() {
       });
 
       if (!response.ok) {
-        throw new Error(`JSONBin error: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`JSONBin PUT error: ${response.status} - ${errorText}`);
+        return res.status(response.status).json({ error: "JSONBin API Error", details: errorText });
       }
 
       const data = await response.json();
+      console.log("PUT /api/data - Success");
       res.json(data.record);
     } catch (error: any) {
-      console.error("Error saving to JSONBin:", error);
+      console.error("PUT /api/data - Exception:", error);
       res.status(500).json({ error: error.message });
     }
   });
