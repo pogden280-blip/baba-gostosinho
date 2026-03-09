@@ -797,6 +797,39 @@
                         {/* Teams Tab */}
                         {currentTab === 'teams' && (
                             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-xl font-black">Times Sorteados</h2>
+                                </div>
+                                <div className="grid grid-cols-1 gap-4">
+                                    {teams.map((team, idx) => (
+                                        <div key={idx} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+                                            <div className={`${idx % 2 === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} px-4 py-3 text-white flex justify-between items-center`}>
+                                                <h3 className="font-bold">{team.name}</h3>
+                                                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                                                    Média: {(team.players.reduce((acc, p) => acc + p.level, 0) / (team.players.length || 1)).toFixed(1)}
+                                                </span>
+                                            </div>
+                                            <div className="p-4 space-y-2">
+                                                {team.players.map(p => (
+                                                    <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
+                                                        <span className="text-sm font-medium text-zinc-700">{p.name}</span>
+                                                        <div className="flex gap-0.5">
+                                                            {Array.from({ length: p.level }).map((_, i) => (
+                                                                <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Match Tab */}
+                        {currentTab === 'match' && (
+                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 {showDaySummary ? (
                                     <div className="space-y-6">
                                         <div className="text-center space-y-2">
@@ -868,42 +901,78 @@
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="flex items-center justify-between">
-                                            <h2 className="text-xl font-black">Times Sorteados</h2>
+                                        <div className="text-center space-y-2">
+                                            <div className="inline-flex items-center gap-2 bg-zinc-100 px-4 py-2 rounded-full text-zinc-600 font-mono text-xl font-bold">
+                                                <Icon name="play" size={20} /> <span>{formatTime(timerSeconds)}</span>
+                                            </div>
                                             {isAdminMode && (
-                                                <button onClick={generateTeams} className="text-sm font-medium text-emerald-600 flex items-center gap-1">
-                                                    <Icon name="shuffle" size={16} /> Sortear Novamente
-                                                </button>
+                                                <div className="flex justify-center gap-4 mt-4">
+                                                    <button onClick={() => setIsTimerRunning(!isTimerRunning)} className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg ${isTimerRunning ? 'bg-amber-500' : 'bg-emerald-600'}`}>
+                                                        {isTimerRunning ? <Icon name="pause" size={24} /> : <Icon name="play" size={24} />}
+                                                    </button>
+                                                    <button onClick={() => { setIsTimerRunning(false); setTimerSeconds(0); }} className="w-14 h-14 rounded-full bg-zinc-200 text-zinc-600 flex items-center justify-center">
+                                                        <Icon name="rotate-ccw" size={24} />
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
-                                        <div className="grid grid-cols-1 gap-4">
-                                            {teams.map((team, idx) => (
-                                                <div key={idx} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-                                                    <div className={`${idx % 2 === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} px-4 py-3 text-white flex justify-between items-center`}>
-                                                        <h3 className="font-bold">{team.name}</h3>
-                                                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                                                            Média: {(team.players.reduce((acc, p) => acc + p.level, 0) / (team.players.length || 1)).toFixed(1)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="p-4 space-y-2">
-                                                        {team.players.map(p => (
-                                                            <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
-                                                                <span className="text-sm font-medium text-zinc-700">{p.name}</span>
-                                                                <div className="flex gap-0.5">
-                                                                    {Array.from({ length: p.level }).map((_, i) => (
-                                                                        <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        ))}
+                                        <div className="flex flex-col gap-4">
+                                            {teams.length > 2 && (
+                                                <div className="bg-white p-4 rounded-2xl border border-zinc-200 space-y-3">
+                                                    <p className="text-[10px] font-bold text-zinc-400 uppercase text-center">Selecionar Times em Campo</p>
+                                                    <div className="flex gap-2">
+                                                        <select 
+                                                            disabled={!isAdminMode}
+                                                            value={currentMatchTeams[0]} 
+                                                            onChange={(e) => {
+                                                                const newMatch = [parseInt(e.target.value), currentMatchTeams[1]];
+                                                                setCurrentMatchTeams(newMatch);
+                                                                saveData(players, finances, { teams, currentMatchTeams: newMatch });
+                                                            }}
+                                                            className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-100"
+                                                        >
+                                                            {teams.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
+                                                        </select>
+                                                        <div className="flex items-center text-zinc-300 font-bold">VS</div>
+                                                        <select 
+                                                            disabled={!isAdminMode}
+                                                            value={currentMatchTeams[1]} 
+                                                            onChange={(e) => {
+                                                                const newMatch = [currentMatchTeams[0], parseInt(e.target.value)];
+                                                                setCurrentMatchTeams(newMatch);
+                                                                saveData(players, finances, { teams, currentMatchTeams: newMatch });
+                                                            }}
+                                                            className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-100"
+                                                        >
+                                                            {teams.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
+                                                        </select>
                                                     </div>
                                                 </div>
-                                            ))}
+                                            )}
+                                            <div className="flex items-center justify-between gap-4">
+                                                {[currentMatchTeams[0], currentMatchTeams[1]].map((teamIdx, i) => {
+                                                    const team = teams[teamIdx];
+                                                    if (!team) return null;
+                                                    return (
+                                                        <div key={i} className="flex-1 bg-white p-6 rounded-3xl border text-center space-y-4">
+                                                            <p className={`text-xs font-bold uppercase tracking-widest ${i === 0 ? 'text-emerald-600' : 'text-zinc-800'}`}>{team.name}</p>
+                                                            <p className="text-6xl font-black">{team.score}</p>
+                                                            {isAdminMode && (
+                                                                <div className="flex justify-center gap-2">
+                                                                    <button onClick={() => updateScore(teamIdx, -1)} className="p-2 bg-zinc-100 rounded-xl"><Icon name="minus" size={20} /></button>
+                                                                    <button onClick={() => updateScore(teamIdx, 1)} className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><Icon name="plus" size={20} /></button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
+                                        
                                         {isAdminMode && (
-                                            <div className="flex flex-col gap-3">
-                                                <button onClick={() => setCurrentTab('match')} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
-                                                    Começar Partida <Icon name="play" size={20} />
+                                            <div className="space-y-3">
+                                                <button onClick={endMatch} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
+                                                    Encerrar Partida <Icon name="check-circle" size={20} />
                                                 </button>
                                                 {matchHistory.length > 0 && (
                                                     <button onClick={endDay} className="w-full bg-amber-500 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
@@ -912,104 +981,25 @@
                                                 )}
                                             </div>
                                         )}
-                                    </>
-                                )}
-                            </div>
-                        )}
 
-                        {/* Match Tab */}
-                        {currentTab === 'match' && (
-                            <div className="space-y-8">
-                                <div className="text-center space-y-2">
-                                    <div className="inline-flex items-center gap-2 bg-zinc-100 px-4 py-2 rounded-full text-zinc-600 font-mono text-xl font-bold">
-                                        <Icon name="play" size={20} /> <span>{formatTime(timerSeconds)}</span>
-                                    </div>
-                                    {isAdminMode && (
-                                        <div className="flex justify-center gap-4 mt-4">
-                                            <button onClick={() => setIsTimerRunning(!isTimerRunning)} className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg ${isTimerRunning ? 'bg-amber-500' : 'bg-emerald-600'}`}>
-                                                {isTimerRunning ? <Icon name="pause" size={24} /> : <Icon name="play" size={24} />}
-                                            </button>
-                                            <button onClick={() => { setIsTimerRunning(false); setTimerSeconds(0); }} className="w-14 h-14 rounded-full bg-zinc-200 text-zinc-600 flex items-center justify-center">
-                                                <Icon name="rotate-ccw" size={24} />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex flex-col gap-4">
-                                    {teams.length > 2 && (
-                                        <div className="bg-white p-4 rounded-2xl border border-zinc-200 space-y-3">
-                                            <p className="text-[10px] font-bold text-zinc-400 uppercase text-center">Selecionar Times em Campo</p>
-                                            <div className="flex gap-2">
-                                                <select 
-                                                    disabled={!isAdminMode}
-                                                    value={currentMatchTeams[0]} 
-                                                    onChange={(e) => {
-                                                        const newMatch = [parseInt(e.target.value), currentMatchTeams[1]];
-                                                        setCurrentMatchTeams(newMatch);
-                                                        saveData(players, finances, { teams, currentMatchTeams: newMatch });
-                                                    }}
-                                                    className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-100"
-                                                >
-                                                    {teams.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
-                                                </select>
-                                                <div className="flex items-center text-zinc-300 font-bold">VS</div>
-                                                <select 
-                                                    disabled={!isAdminMode}
-                                                    value={currentMatchTeams[1]} 
-                                                    onChange={(e) => {
-                                                        const newMatch = [currentMatchTeams[0], parseInt(e.target.value)];
-                                                        setCurrentMatchTeams(newMatch);
-                                                        saveData(players, finances, { teams, currentMatchTeams: newMatch });
-                                                    }}
-                                                    className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-100"
-                                                >
-                                                    {teams.map((t, i) => <option key={i} value={i}>{t.name}</option>)}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="flex items-center justify-between gap-4">
-                                        {[currentMatchTeams[0], currentMatchTeams[1]].map((teamIdx, i) => {
-                                            const team = teams[teamIdx];
-                                            if (!team) return null;
-                                            return (
-                                                <div key={i} className="flex-1 bg-white p-6 rounded-3xl border text-center space-y-4">
-                                                    <p className={`text-xs font-bold uppercase tracking-widest ${i === 0 ? 'text-emerald-600' : 'text-zinc-800'}`}>{team.name}</p>
-                                                    <p className="text-6xl font-black">{team.score}</p>
-                                                    {isAdminMode && (
-                                                        <div className="flex justify-center gap-2">
-                                                            <button onClick={() => updateScore(teamIdx, -1)} className="p-2 bg-zinc-100 rounded-xl"><Icon name="minus" size={20} /></button>
-                                                            <button onClick={() => updateScore(teamIdx, 1)} className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><Icon name="plus" size={20} /></button>
+                                        {matchHistory.length > 0 && (
+                                            <div className="space-y-4 pt-4">
+                                                <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest text-center">Histórico de Partidas</h3>
+                                                <div className="space-y-2">
+                                                    {matchHistory.slice().reverse().map((m, i) => (
+                                                        <div key={i} className="bg-white p-3 rounded-xl border border-zinc-200 flex items-center justify-between text-xs">
+                                                            <div className="flex-1 text-right font-bold text-zinc-600">{m.t1}</div>
+                                                            <div className="mx-3 px-2 py-1 bg-zinc-100 rounded-lg font-black text-zinc-900">
+                                                                {m.s1} x {m.s2}
+                                                            </div>
+                                                            <div className="flex-1 text-left font-bold text-zinc-600">{m.t2}</div>
+                                                            <div className="ml-3 text-[10px] text-zinc-400 font-medium">{m.time}</div>
                                                         </div>
-                                                    )}
+                                                    ))}
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                
-                                {isAdminMode && (
-                                    <button onClick={endMatch} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
-                                        Encerrar Partida <Icon name="check-circle" size={20} />
-                                    </button>
-                                )}
-
-                                {matchHistory.length > 0 && (
-                                    <div className="space-y-4 pt-4">
-                                        <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest text-center">Histórico de Partidas</h3>
-                                        <div className="space-y-2">
-                                            {matchHistory.slice().reverse().map((m, i) => (
-                                                <div key={i} className="bg-white p-3 rounded-xl border border-zinc-200 flex items-center justify-between text-xs">
-                                                    <div className="flex-1 text-right font-bold text-zinc-600">{m.t1}</div>
-                                                    <div className="mx-3 px-2 py-1 bg-zinc-100 rounded-lg font-black text-zinc-900">
-                                                        {m.s1} x {m.s2}
-                                                    </div>
-                                                    <div className="flex-1 text-left font-bold text-zinc-600">{m.t2}</div>
-                                                    <div className="ml-3 text-[10px] text-zinc-400 font-medium">{m.time}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         )}
