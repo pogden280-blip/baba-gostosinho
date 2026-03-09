@@ -414,13 +414,14 @@
                 const res = await fetch(url);
                 const backendHeader = res.headers.get("X-Backend-Server");
                 const text = await res.text();
+                console.log("Status:", res.status);
                 console.log("Raw Response:", text);
                 console.log("Backend Header:", backendHeader);
                 try {
                     const data = JSON.parse(text);
-                    alert(`API Test Success!\nServer: ${backendHeader || "Unknown"}\nData: ${JSON.stringify(data)}`);
+                    alert(`API Test Success!\nStatus: ${res.status}\nServer: ${backendHeader || "Unknown"}\nData: ${JSON.stringify(data)}`);
                 } catch (e) {
-                    alert(`API Test Failed (Not JSON).\nServer: ${backendHeader || "Unknown"}\nResponse starts with: ${text.substring(0, 100)}`);
+                    alert(`API Test Failed (Not JSON).\nStatus: ${res.status}\nServer: ${backendHeader || "Unknown"}\nResponse starts with: ${text.substring(0, 100)}`);
                 }
             } catch (e) {
                 alert("API Test Failed (Network/Other): " + e.message);
