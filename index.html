@@ -415,7 +415,15 @@
 
             try {
                 const response = await fetch('/api/data');
-                const data = await response.json();
+                const contentType = response.headers.get("content-type");
+                
+                let data;
+                if (contentType && contentType.includes("application/json")) {
+                    data = await response.json();
+                } else {
+                    const text = await response.text();
+                    throw new Error("Resposta inválida do servidor: " + text.substring(0, 50));
+                }
 
                 if (response.ok) {
                     // Só atualiza se houver dados válidos
@@ -459,7 +467,14 @@
                     body: JSON.stringify({ players, finances })
                 });
                 
-                const data = await response.json();
+                const contentType = response.headers.get("content-type");
+                let data;
+                if (contentType && contentType.includes("application/json")) {
+                    data = await response.json();
+                } else {
+                    const text = await response.text();
+                    throw new Error("Resposta inválida ao salvar: " + text.substring(0, 50));
+                }
 
                 if (response.ok) {
                     if (statusText) statusText.innerText = "Nuvem Atualizada";
