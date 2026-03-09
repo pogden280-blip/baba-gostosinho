@@ -1,6 +1,11 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -10,13 +15,18 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
-  const BIN_ID = process.env.JSONBIN_BIN_ID || "69af06d2ae596e708f71a0ef";
-  const MASTER_KEY = process.env.JSONBIN_MASTER_KEY || "$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi";
+  const BIN_ID = (process.env.JSONBIN_BIN_ID || "69af06d2ae596e708f71a0ef").trim();
+  const MASTER_KEY = (process.env.JSONBIN_MASTER_KEY || "$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi").trim();
 
   console.log(`Configured JSONBin - ID: ${BIN_ID.substring(0, 4)}... Key: ${MASTER_KEY.substring(0, 10)}...`);
 
+  // Health check
+  app.get("/api/ping", (req, res) => {
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
   // JSONBin Proxy Endpoints
-  app.get("/api/data", async (req, res) => {
+  app.get(["/api/data", "/api/data/"], async (req, res) => {
     console.log("GET /api/data - Fetching from JSONBin...");
     try {
       if (!BIN_ID || !MASTER_KEY) {
@@ -29,14 +39,25 @@ async function startServer() {
         },
       });
 
+      const contentType = response.headers.get("content-type");
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`JSONBin GET error: ${response.status} - ${errorText}`);
+        let errorDetails = "Unknown error";
+        if (contentType && contentType.includes("application/json")) {
+          const errJson = await response.json();
+          errorDetails = JSON.stringify(errJson);
+        } else {
+          errorDetails = await response.text();
+        }
+        console.error(`JSONBin GET error: ${response.status} - ${errorDetails}`);
         return res.status(response.status).json({ 
           error: "JSONBin API Error", 
           status: response.status,
-          details: errorText 
+          details: errorDetails 
         });
+      }
+
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("JSONBin returned non-JSON response");
       }
 
       const data = await response.json();
@@ -48,7 +69,7 @@ async function startServer() {
     }
   });
 
-  app.put("/api/data", async (req, res) => {
+  app.put(["/api/data", "/api/data/"], async (req, res) => {
     const bodySize = JSON.stringify(req.body).length;
     console.log(`PUT /api/data - Saving to JSONBin... (Size: ${bodySize} bytes)`);
     try {
@@ -65,14 +86,25 @@ async function startServer() {
         body: JSON.stringify(req.body),
       });
 
+      const contentType = response.headers.get("content-type");
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`JSONBin PUT error: ${response.status} - ${errorText}`);
+        let errorDetails = "Unknown error";
+        if (contentType && contentType.includes("application/json")) {
+          const errJson = await response.json();
+          errorDetails = JSON.stringify(errJson);
+        } else {
+          errorDetails = await response.text();
+        }
+        console.error(`JSONBin PUT error: ${response.status} - ${errorDetails}`);
         return res.status(response.status).json({ 
           error: "JSONBin API Error", 
           status: response.status,
-          details: errorText 
+          details: errorDetails 
         });
+      }
+
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("JSONBin returned non-JSON response");
       }
 
       const data = await response.json();
@@ -93,6 +125,9 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     app.use(express.static("dist"));
+    app.get("*", (req, res) => {
+      res.sendFile(path.resolve(__dirname, "dist", "index.html"));
+    });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
