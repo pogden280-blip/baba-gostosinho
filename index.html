@@ -110,6 +110,8 @@
             const [mensalidadeValue, setMensalidadeValue] = useState(30);
             const [diariaValue, setDiariaValue] = useState(8);
             const [isSavingSettings, setIsSavingSettings] = useState(false);
+            const [filterStartDate, setFilterStartDate] = useState('');
+            const [filterEndDate, setFilterEndDate] = useState('');
 
             // Match States
             const [teams, setTeams] = useState([]); // Array of { name: 'Time 1', players: [], score: 0 }
@@ -498,6 +500,49 @@
                 saveData(players, updatedFinances, undefined, matchHistory);
             };
 
+            const sendFinanceSummaryToWhatsApp = () => {
+                const start = filterStartDate ? new Date(filterStartDate + 'T00:00:00') : null;
+                const end = filterEndDate ? new Date(filterEndDate + 'T23:59:59') : null;
+                
+                const filtered = finances.filter(f => {
+                    const [day, month, year] = f.date.split('/').map(Number);
+                    const fDate = new Date(year, month - 1, day);
+                    
+                    if (start && fDate < start) return false;
+                    if (end && fDate > end) return false;
+                    return true;
+                });
+
+                if (filtered.length === 0) {
+                    alert('Nenhuma movimentação encontrada no período selecionado!');
+                    return;
+                }
+
+                let totalIncome = 0;
+                let totalExpense = 0;
+                
+                let text = `📊 *LEVANTAMENTO FINANCEIRO - BABA GOSTOSINHO* 📊\n`;
+                if (filterStartDate && filterEndDate) {
+                    text += `📅 Período: ${new Date(filterStartDate + 'T00:00:00').toLocaleDateString('pt-BR')} até ${new Date(filterEndDate + 'T00:00:00').toLocaleDateString('pt-BR')}\n`;
+                }
+                text += `\n`;
+
+                filtered.forEach(f => {
+                    const sign = f.type === 'income' ? '🟢' : '🔴';
+                    text += `${sign} ${f.date} - ${f.description}: R$ ${f.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+                    if (f.type === 'income') totalIncome += f.amount;
+                    else totalExpense += f.amount;
+                });
+
+                const balance = totalIncome - totalExpense;
+                text += `\n--------------------------\n`;
+                text += `✅ *Total Receitas:* R$ ${totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+                text += `❌ *Total Despesas:* R$ ${totalExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+                text += `💰 *SALDO FINAL:* R$ ${balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+            };
+
             const generateTeams = () => {
                 const confirmedPlayers = players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isPunished);
                 const activePlayersPool = [...confirmedPlayers, ...guests];
@@ -866,6 +911,41 @@
                                                          {isSavingSettings ? <div className="w-3 h-3 border-2 border-zinc-300 border-t-zinc-600 rounded-full animate-spin"></div> : <Icon name="save" size={14} />}
                                                          {isSavingSettings ? 'SALVANDO...' : 'SALVAR REAJUSTE'}
                                                      </button>
+                                                 </section>
+
+                                                 <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                                                     <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
+                                                         <Icon name="file-text" size={16} />
+                                                         Levantamento Financeiro
+                                                     </h3>
+                                                     <div className="space-y-3">
+                                                         <div className="grid grid-cols-2 gap-2">
+                                                             <div className="space-y-1">
+                                                                 <label className="text-[10px] font-bold text-zinc-400 uppercase">Início</label>
+                                                                 <input 
+                                                                     type="date" 
+                                                                     value={filterStartDate} 
+                                                                     onChange={(e) => setFilterStartDate(e.target.value)} 
+                                                                     className="w-full px-3 py-2 rounded-xl border border-zinc-200 text-xs" 
+                                                                 />
+                                                             </div>
+                                                             <div className="space-y-1">
+                                                                 <label className="text-[10px] font-bold text-zinc-400 uppercase">Fim</label>
+                                                                 <input 
+                                                                     type="date" 
+                                                                     value={filterEndDate} 
+                                                                     onChange={(e) => setFilterEndDate(e.target.value)} 
+                                                                     className="w-full px-3 py-2 rounded-xl border border-zinc-200 text-xs" 
+                                                                 />
+                                                             </div>
+                                                         </div>
+                                                         <button 
+                                                             onClick={sendFinanceSummaryToWhatsApp}
+                                                             className="w-full bg-zinc-800 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-zinc-700 transition-colors"
+                                                         >
+                                                             <Icon name="share-2" size={14} /> ENVIAR LEVANTAMENTO (WA)
+                                                         </button>
+                                                     </div>
                                                  </section>
 
                                                  <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
