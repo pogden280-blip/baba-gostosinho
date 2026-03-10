@@ -40,6 +40,11 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // Verificação de dependências
+        if (!window.lucide || !window.React || !window.ReactDOM) {
+            console.error("Erro: Algumas dependências (Lucide, React ou ReactDOM) não foram carregadas corretamente.");
+        }
+
         // Configurações do JSONbin
         const BIN_ID = '69af06d2ae596e708f71a0ef';
         const MASTER_KEY = '$2a$10$RxtN.VwYLRsGcmoCji08oeL2di9W0D4tyrBZe/vIV77N665ALQ9Vi';
@@ -47,20 +52,27 @@
 
         // Componente de Ícone Lucide (Wrapper para CDN)
         const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
-            const iconRef = useRef(null);
+            const containerRef = useRef(null);
+            
             useEffect(() => {
-                if (iconRef.current) {
-                    lucide.createIcons({
-                        attrs: {
-                            size,
-                            class: className,
-                            fill
-                        },
-                        nameAttr: 'data-lucide'
-                    });
+                if (containerRef.current) {
+                    // Clear container and create a fresh i element for Lucide to replace
+                    containerRef.current.innerHTML = `<i data-lucide="${name}"></i>`;
+                    
+                    if (window.lucide) {
+                        window.lucide.createIcons({
+                            attrs: {
+                                size,
+                                class: className,
+                                fill
+                            },
+                            nameAttr: 'data-lucide'
+                        });
+                    }
                 }
             }, [name, size, className, fill]);
-            return <i data-lucide={name} ref={iconRef} className={className}></i>;
+
+            return <span ref={containerRef} className={`inline-flex items-center justify-center ${className}`}></span>;
         };
 
         function App() {
@@ -299,6 +311,7 @@
 
             const updatePlayer = (id, field, value) => {
                 let newConfirmedIds = [...confirmedPlayerIds];
+                let newFinances = [...finances];
                 const updatedPlayers = players.map(p => {
                     if (p.id === id) {
                         let updated = { ...p, [field]: value };
@@ -306,6 +319,7 @@
                         // Lógica de confirmação automática baseada no pagamento
                         if (field === 'paymentStatus') {
                             if (value === 'pago') {
+                                // Lógica para Mensalista: Adicionar receita ao pagar mensalidade
                                 if (p.type === 'mensalista') {
                                     const today = new Date();
                                     today.setHours(0, 0, 0, 0);
@@ -317,6 +331,16 @@
                                         nextMonth.setDate(nextMonth.getDate() + 30);
                                         updated.dueDate = nextMonth.toISOString().split('T')[0];
                                     }
+
+                                    // Adicionar entrada financeira para mensalista
+                                    newFinances.push({
+                                        id: `m-${Date.now()}-${id}`,
+                                        description: `Mensalidade: ${p.name}`,
+                                        amount: mensalidadeValue,
+                                        type: 'income',
+                                        date: new Date().toLocaleDateString('pt-BR'),
+                                        author: currentUser
+                                    });
                                 }
                                 
                                 if (!newConfirmedIds.includes(id)) {
@@ -332,7 +356,8 @@
                 });
                 setPlayers(updatedPlayers);
                 setConfirmedPlayerIds(newConfirmedIds);
-                saveData(updatedPlayers, finances, undefined, matchHistory, undefined, undefined, newConfirmedIds);
+                setFinances(newFinances);
+                saveData(updatedPlayers, newFinances, undefined, matchHistory, undefined, undefined, newConfirmedIds);
             };
 
             const togglePlayerStatus = (id, field) => {
@@ -544,6 +569,21 @@
                     return;
                 }
                 
+                // Lançar receitas dos diaristas pagos
+                const newFinances = [...finances];
+                const paidDiaristas = players.filter(p => p.type === 'diarista' && p.paymentStatus === 'pago');
+                
+                paidDiaristas.forEach((p, index) => {
+                    newFinances.push({
+                        id: `d-${Date.now()}-${p.id}-${index}`,
+                        description: `Diária: ${p.name}`,
+                        amount: diariaValue,
+                        type: 'income',
+                        date: new Date().toLocaleDateString('pt-BR'),
+                        author: currentUser
+                    });
+                });
+
                 // Reset diaristas payment status
                 const updatedPlayers = players.map(p => {
                     if (p.type === 'diarista') {
@@ -552,9 +592,10 @@
                     return p;
                 });
                 setPlayers(updatedPlayers);
+                setFinances(newFinances);
 
                 setShowDaySummary(true);
-                saveData(updatedPlayers, finances, undefined, undefined, true);
+                saveData(updatedPlayers, newFinances, undefined, undefined, true);
             };
 
             const resetDay = () => {
