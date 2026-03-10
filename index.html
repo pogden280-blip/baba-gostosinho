@@ -293,12 +293,27 @@
                 setPlayers(updatedPlayers);
                 
                 let newConfirmed = [...confirmedPlayerIds];
+                let newFinances = [...finances];
+
                 if (newPlayer.paymentStatus === 'pago') {
                     newConfirmed.push(newPlayer.id);
                     setConfirmedPlayerIds(newConfirmed);
+
+                    // Se for mensalista pago ao adicionar, lança no financeiro
+                    if (newPlayer.type === 'mensalista') {
+                        newFinances.push({
+                            id: `m-${Date.now()}-${newPlayer.id}`,
+                            description: `Mensalidade (Novo): ${newPlayer.name}`,
+                            amount: mensalidadeValue,
+                            type: 'income',
+                            date: new Date().toLocaleDateString('pt-BR'),
+                            author: currentUser
+                        });
+                        setFinances(newFinances);
+                    }
                 }
 
-                saveData(updatedPlayers, finances, undefined, matchHistory, undefined, undefined, newConfirmed);
+                saveData(updatedPlayers, newFinances, undefined, matchHistory, undefined, undefined, newConfirmed);
                 setNewPlayerName('');
                 setNewPlayerRating(3);
                 setNewPlayerType('diarista');
@@ -380,7 +395,11 @@
             const generateWhatsAppList = (isEmpty = false) => {
                 const today = new Date();
                 const nextSaturday = new Date();
-                nextSaturday.setDate(today.getDate() + (6 - today.getDay() + 7) % 7);
+                // Calcula dias até o próximo sábado. Se hoje for sábado, pega o próximo (daqui a 7 dias)
+                let daysUntilSaturday = (6 - today.getDay() + 7) % 7;
+                if (daysUntilSaturday === 0) daysUntilSaturday = 7; 
+                
+                nextSaturday.setDate(today.getDate() + daysUntilSaturday);
                 const dateStr = nextSaturday.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
                 
                 const activePlayers = isEmpty ? [] : players.filter(p => !p.isGoalkeeper && !p.isPunished);
@@ -560,7 +579,6 @@
                 setIsTimerRunning(false);
 
                 saveData(players, finances, { teams: updatedTeams, currentMatchTeams }, updatedHistory);
-                setCurrentTab('teams');
             };
 
             const endDay = () => {
@@ -569,14 +587,27 @@
                     return;
                 }
                 
-                // Lançar receitas dos diaristas pagos
+                // Lançar receitas dos diaristas pagos e convidados
                 const newFinances = [...finances];
                 const paidDiaristas = players.filter(p => p.type === 'diarista' && p.paymentStatus === 'pago');
                 
+                // Diaristas
                 paidDiaristas.forEach((p, index) => {
                     newFinances.push({
                         id: `d-${Date.now()}-${p.id}-${index}`,
                         description: `Diária: ${p.name}`,
+                        amount: diariaValue,
+                        type: 'income',
+                        date: new Date().toLocaleDateString('pt-BR'),
+                        author: currentUser
+                    });
+                });
+
+                // Convidados (sempre pagam diária)
+                guests.forEach((g, index) => {
+                    newFinances.push({
+                        id: `g-${Date.now()}-${g.id}-${index}`,
+                        description: `Diária (Conv.): ${g.name}`,
                         amount: diariaValue,
                         type: 'income',
                         date: new Date().toLocaleDateString('pt-BR'),
@@ -591,11 +622,13 @@
                     }
                     return p;
                 });
+                
                 setPlayers(updatedPlayers);
                 setFinances(newFinances);
+                setGuests([]); // Limpa convidados ao encerrar o dia
 
                 setShowDaySummary(true);
-                saveData(updatedPlayers, newFinances, undefined, undefined, true);
+                saveData(updatedPlayers, newFinances, undefined, undefined, true, []);
             };
 
             const resetDay = () => {
