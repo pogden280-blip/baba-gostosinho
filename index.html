@@ -18,6 +18,20 @@
         body { font-family: 'Inter', sans-serif; }
         .star-rating button { transition: transform 0.1s; }
         .star-rating button:active { transform: scale(0.9); }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f4f4f5;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #d4d4d8;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #a1a1aa;
+        }
     </style>
 </head>
 <body class="bg-zinc-50 text-zinc-900">
@@ -61,10 +75,21 @@
             const [passwordInput, setPasswordInput] = useState('');
             const [isLoading, setIsLoading] = useState(true);
             
+            const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
+            const [showAddGuestForm, setShowAddGuestForm] = useState(false);
+            const [guests, setGuests] = useState([]);
+            const [confirmedPlayerIds, setConfirmedPlayerIds] = useState([]);
+            const [newGuestName, setNewGuestName] = useState('');
+            const [newGuestRating, setNewGuestRating] = useState(3);
+            const [isGuestGoalkeeper, setIsGuestGoalkeeper] = useState(false);
+            const [isGuestPaid, setIsGuestPaid] = useState(true);
+            
             // Form States
             const [newPlayerName, setNewPlayerName] = useState('');
             const [newPlayerRating, setNewPlayerRating] = useState(3);
             const [newPlayerType, setNewPlayerType] = useState('diarista');
+            const [newPlayerPaymentStatus, setNewPlayerPaymentStatus] = useState('pago');
+            const [newPlayerDueDate, setNewPlayerDueDate] = useState('');
             const [isGoalkeeper, setIsGoalkeeper] = useState(false);
             const [isPunished, setIsPunished] = useState(false);
             const [financeDesc, setFinanceDesc] = useState('');
@@ -89,10 +114,51 @@
                         });
                         if (response.ok) {
                             const data = await response.json();
-                            setPlayers(data.record.players || []);
-                            setFinances(data.record.finances || []);
-                            setMatchHistory(data.record.matchHistory || []);
+                            const rawPlayers = data.record.players || [];
+                            const rawFinances = data.record.finances || [];
+                            const rawHistory = data.record.matchHistory || [];
+                            const rawGuests = data.record.guests || [];
+                            const rawConfirmed = data.record.confirmedPlayerIds || [];
+                            
+                            // Check for expirations
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            let expirationsChanged = false;
+                            const processedPlayers = rawPlayers.map(p => {
+                                if (p.type === 'mensalista' && p.paymentStatus === 'pago' && p.dueDate) {
+                                    const [year, month, day] = p.dueDate.split('-').map(Number);
+                                    const dueDate = new Date(year, month - 1, day);
+                                    if (dueDate < today) {
+                                        expirationsChanged = true;
+                                        return { ...p, paymentStatus: 'não' };
+                                    }
+                                }
+                                return p;
+                            });
+
+                            setPlayers(processedPlayers);
+                            setFinances(rawFinances);
+                            setMatchHistory(rawHistory);
+                            setGuests(rawGuests);
+                            
+                            // Always filter confirmed list to only include paid players
+                            let finalConfirmed = rawConfirmed.filter(id => {
+                                const player = processedPlayers.find(p => p.id === id);
+                                return player && player.paymentStatus === 'pago';
+                            });
+
+                            if (finalConfirmed.length === 0 && processedPlayers.length > 0 && !data.record.lastDraw) {
+                                const mensalistas = processedPlayers.filter(p => p.type === 'mensalista' && !p.isPunished && p.paymentStatus === 'pago').map(p => p.id);
+                                setConfirmedPlayerIds(mensalistas);
+                            } else {
+                                setConfirmedPlayerIds(finalConfirmed);
+                            }
+
                             setShowDaySummary(data.record.showDaySummary || false);
+
+                            if (expirationsChanged) {
+                                saveData(processedPlayers, rawFinances, data.record.lastDraw, rawHistory, data.record.showDaySummary, rawGuests, finalConfirmed);
+                            }
                             if (data.record.lastDraw) {
                                 if (data.record.lastDraw.teams) {
                                     setTeams(data.record.lastDraw.teams);
@@ -117,11 +183,13 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary) => {
+            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds) => {
                 try {
                     const currentDraw = lastDraw !== undefined ? lastDraw : (teams.length > 0 ? { teams, currentMatchTeams } : null);
                     const historyToSave = newHistory !== undefined ? newHistory : matchHistory;
                     const summaryToSave = newShowSummary !== undefined ? newShowSummary : showDaySummary;
+                    const guestsToSave = newGuests !== undefined ? newGuests : guests;
+                    const confirmedToSave = newConfirmedIds !== undefined ? newConfirmedIds : confirmedPlayerIds;
                     await fetch(API_URL, {
                         method: 'PUT',
                         headers: {
@@ -133,7 +201,9 @@
                             finances: newFinances,
                             lastDraw: currentDraw,
                             matchHistory: historyToSave,
-                            showDaySummary: summaryToSave
+                            showDaySummary: summaryToSave,
+                            guests: guestsToSave,
+                            confirmedPlayerIds: confirmedToSave
                         })
                     });
                 } catch (error) {
@@ -183,29 +253,68 @@
                     name: newPlayerName.trim(),
                     level: newPlayerRating,
                     type: newPlayerType,
+                    paymentStatus: newPlayerPaymentStatus,
+                    dueDate: newPlayerDueDate,
                     author: currentUser,
                     isGoalkeeper: isGoalkeeper,
                     isPunished: isPunished
                 };
                 const updatedPlayers = [...players, newPlayer];
                 setPlayers(updatedPlayers);
-                saveData(updatedPlayers, finances, undefined, matchHistory);
+                
+                let newConfirmed = [...confirmedPlayerIds];
+                if (newPlayer.paymentStatus === 'pago') {
+                    newConfirmed.push(newPlayer.id);
+                    setConfirmedPlayerIds(newConfirmed);
+                }
+
+                saveData(updatedPlayers, finances, undefined, matchHistory, undefined, undefined, newConfirmed);
                 setNewPlayerName('');
                 setNewPlayerRating(3);
                 setNewPlayerType('diarista');
+                setNewPlayerPaymentStatus('pago');
+                setNewPlayerDueDate('');
                 setIsGoalkeeper(false);
                 setIsPunished(false);
+                setShowAddPlayerForm(false);
             };
 
             const updatePlayer = (id, field, value) => {
+                let newConfirmedIds = [...confirmedPlayerIds];
                 const updatedPlayers = players.map(p => {
                     if (p.id === id) {
-                        return { ...p, [field]: value };
+                        let updated = { ...p, [field]: value };
+                        
+                        // Lógica de confirmação automática baseada no pagamento
+                        if (field === 'paymentStatus') {
+                            if (value === 'pago') {
+                                if (p.type === 'mensalista') {
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const [year, month, day] = (p.dueDate || '').split('-').map(Number);
+                                    const currentDueDate = p.dueDate ? new Date(year, month - 1, day) : null;
+                                    
+                                    if (!currentDueDate || currentDueDate < today) {
+                                        const nextMonth = new Date();
+                                        nextMonth.setDate(nextMonth.getDate() + 30);
+                                        updated.dueDate = nextMonth.toISOString().split('T')[0];
+                                    }
+                                }
+                                
+                                if (!newConfirmedIds.includes(id)) {
+                                    newConfirmedIds.push(id);
+                                }
+                            } else {
+                                newConfirmedIds = newConfirmedIds.filter(cid => cid !== id);
+                            }
+                        }
+                        return updated;
                     }
                     return p;
                 });
                 setPlayers(updatedPlayers);
-                saveData(updatedPlayers, finances, undefined, matchHistory);
+                setConfirmedPlayerIds(newConfirmedIds);
+                saveData(updatedPlayers, finances, undefined, matchHistory, undefined, undefined, newConfirmedIds);
             };
 
             const togglePlayerStatus = (id, field) => {
@@ -328,9 +437,13 @@
             };
 
             const generateTeams = () => {
-                if (players.length < 2) return;
-                const activePlayers = [...players].filter(p => !p.isPunished);
-                const sorted = activePlayers.sort((a, b) => b.level - a.level);
+                const confirmedPlayers = players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isPunished);
+                const activePlayersPool = [...confirmedPlayers, ...guests];
+                if (activePlayersPool.length < 2) {
+                    alert('Selecione pelo menos 2 jogadores para o sorteio!');
+                    return;
+                }
+                const sorted = activePlayersPool.sort((a, b) => b.level - a.level);
                 
                 let numTeams = 2;
                 if (sorted.length > 18) numTeams = 4;
@@ -412,15 +525,37 @@
                     alert('Nenhuma partida registrada hoje!');
                     return;
                 }
+                
+                // Reset diaristas payment status
+                const updatedPlayers = players.map(p => {
+                    if (p.type === 'diarista') {
+                        return { ...p, paymentStatus: 'devendo' };
+                    }
+                    return p;
+                });
+                setPlayers(updatedPlayers);
+
                 setShowDaySummary(true);
-                saveData(players, finances, undefined, undefined, true);
+                saveData(updatedPlayers, finances, undefined, undefined, true);
             };
 
             const resetDay = () => {
                 setMatchHistory([]);
                 setTeams([]);
+                setGuests([]);
                 setShowDaySummary(false);
-                saveData(players, finances, null, [], false);
+                
+                const updatedPlayers = players.map(p => {
+                    if (p.type === 'diarista') {
+                        return { ...p, paymentStatus: 'devendo' };
+                    }
+                    return p;
+                });
+                setPlayers(updatedPlayers);
+
+                const mensalistas = updatedPlayers.filter(p => p.type === 'mensalista' && !p.isPunished && p.paymentStatus === 'pago').map(p => p.id);
+                setConfirmedPlayerIds(mensalistas);
+                saveData(updatedPlayers, finances, null, [], false, [], mensalistas);
                 setCurrentTab('home');
             };
 
@@ -535,6 +670,10 @@
                                 <button 
                                     onClick={() => {
                                         if (isAdminMode && currentTab === 'home') setIsAdminMode(false);
+                                        else if (isViewMode) {
+                                            setIsViewMode(false);
+                                            setCurrentTab('home');
+                                        }
                                         else setCurrentTab('home');
                                     }} 
                                     className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-600"
@@ -635,54 +774,105 @@
 
                                         {adminSubTab === 'members' && (
                                             <div className="space-y-6">
-                                                <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
-                                                    <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
-                                                        <Icon name="plus" size={16} />
-                                                        Novo Membro
-                                                    </h3>
-                                                    <div className="space-y-4">
-                                                        <input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="Nome" className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
-                                                        <div className="flex items-center justify-between bg-zinc-50 p-3 rounded-xl">
-                                                            <span className="text-sm text-zinc-600 font-medium">Nível:</span>
-                                                            <div className="flex gap-1">
-                                                                {[1, 2, 3, 4, 5].map((star) => (
-                                                                    <button key={star} onClick={() => setNewPlayerRating(star)} className={`p-1 ${newPlayerRating >= star ? 'text-amber-400' : 'text-zinc-300'}`}>
-                                                                        <Icon name="star" size={20} fill={newPlayerRating >= star ? "currentColor" : "none"} />
-                                                                    </button>
-                                                                ))}
+                                                {!showAddPlayerForm ? (
+                                                    <button 
+                                                        onClick={() => setShowAddPlayerForm(true)}
+                                                        className="w-full bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"
+                                                    >
+                                                        <Icon name="plus" size={20} /> NOVO MEMBRO
+                                                    </button>
+                                                ) : (
+                                                    <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200 animate-in fade-in zoom-in duration-300">
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-2">
+                                                                <Icon name="plus" size={16} />
+                                                                Novo Membro
+                                                            </h3>
+                                                            <button onClick={() => setShowAddPlayerForm(false)} className="text-zinc-400 hover:text-zinc-600">
+                                                                <Icon name="x" size={20} />
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-4">
+                                                            <input type="text" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} placeholder="Nome" className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                                                            
+                                                            <div className="flex gap-2">
+                                                                <button 
+                                                                    onClick={() => setNewPlayerType('mensalista')} 
+                                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${newPlayerType === 'mensalista' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                                                                >
+                                                                    MENSALISTA
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => setNewPlayerType('diarista')} 
+                                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${newPlayerType === 'diarista' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                                                                >
+                                                                    DIARISTA
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="space-y-3 bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-bold text-zinc-500 uppercase">Situação:</span>
+                                                                    <div className="flex gap-2">
+                                                                        <button 
+                                                                            onClick={() => setNewPlayerPaymentStatus('pago')}
+                                                                            className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-all ${newPlayerPaymentStatus === 'pago' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-zinc-200 text-zinc-400'}`}
+                                                                        >
+                                                                            PAGO
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => setNewPlayerPaymentStatus(newPlayerType === 'mensalista' ? 'não' : 'devendo')}
+                                                                            className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-all ${newPlayerPaymentStatus !== 'pago' ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-zinc-200 text-zinc-400'}`}
+                                                                        >
+                                                                            {newPlayerType === 'mensalista' ? 'NÃO' : 'DEVENDO'}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                {newPlayerType === 'mensalista' && (
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <span className="text-xs font-bold text-zinc-500 uppercase">Vencimento:</span>
+                                                                        <input 
+                                                                            type="date" 
+                                                                            value={newPlayerDueDate} 
+                                                                            onChange={(e) => setNewPlayerDueDate(e.target.value)}
+                                                                            className="flex-1 px-2 py-1 text-xs rounded border border-zinc-200 focus:outline-none"
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center justify-between bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+                                                                <span className="text-xs font-bold text-zinc-500 uppercase">Nível:</span>
+                                                                <div className="flex gap-1">
+                                                                    {[1, 2, 3, 4, 5].map((star) => (
+                                                                        <button key={star} onClick={() => setNewPlayerRating(star)} className={`p-1 ${newPlayerRating >= star ? 'text-amber-400' : 'text-zinc-300'}`}>
+                                                                            <Icon name="star" size={18} fill={newPlayerRating >= star ? "currentColor" : "none"} />
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex gap-2">
+                                                                <button 
+                                                                    onClick={() => setIsGoalkeeper(!isGoalkeeper)} 
+                                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${isGoalkeeper ? 'bg-emerald-100 border-emerald-500 text-emerald-600' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                                                                >
+                                                                    GOLEIRO
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => setIsPunished(!isPunished)} 
+                                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${isPunished ? 'bg-red-100 border-red-500 text-red-600' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
+                                                                >
+                                                                    PUNIDO
+                                                                </button>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <button onClick={() => setShowAddPlayerForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 font-semibold py-3 rounded-xl">Cancelar</button>
+                                                                <button onClick={addPlayer} className="flex-2 bg-emerald-600 text-white font-semibold py-3 rounded-xl">Confirmar</button>
                                                             </div>
                                                         </div>
-                                                        <div className="flex gap-2">
-                                                            <button 
-                                                                onClick={() => setNewPlayerType('mensalista')} 
-                                                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${newPlayerType === 'mensalista' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
-                                                            >
-                                                                MENSALISTA
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => setNewPlayerType('diarista')} 
-                                                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${newPlayerType === 'diarista' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
-                                                            >
-                                                                DIARISTA
-                                                            </button>
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <button 
-                                                                onClick={() => setIsGoalkeeper(!isGoalkeeper)} 
-                                                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${isGoalkeeper ? 'bg-emerald-100 border-emerald-500 text-emerald-600' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
-                                                            >
-                                                                GOLEIRO
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => setIsPunished(!isPunished)} 
-                                                                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${isPunished ? 'bg-red-100 border-red-500 text-red-600' : 'bg-zinc-50 border-zinc-200 text-zinc-400'}`}
-                                                            >
-                                                                PUNIDO
-                                                            </button>
-                                                        </div>
-                                                        <button onClick={addPlayer} className="w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl">Confirmar</button>
-                                                    </div>
-                                                </section>
+                                                    </section>
+                                                )}
                                                 <div className="space-y-2">
                                                     {players.map(p => (
                                                         <div key={p.id} className="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between">
@@ -699,12 +889,23 @@
                                                                             {p.type?.toUpperCase() || 'DIARISTA'}
                                                                         </span>
                                                                     </p>
-                                                                    <div className="flex gap-0.5">
-                                                                        {[1, 2, 3, 4, 5].map((star) => (
-                                                                            <button key={star} onClick={() => updatePlayer(p.id, 'level', star)} className={`p-0.5 ${p.level >= star ? 'text-amber-400' : 'text-zinc-200'}`}>
-                                                                                <Icon name="star" size={12} fill={p.level >= star ? "currentColor" : "none"} />
+                                                                    <div className="flex flex-col gap-1 mt-1">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <button 
+                                                                                onClick={() => updatePlayer(p.id, 'paymentStatus', p.paymentStatus === 'pago' ? (p.type === 'mensalista' ? 'não' : 'devendo') : 'pago')}
+                                                                                className={`px-2 py-0.5 rounded text-[8px] font-bold border transition-all ${p.paymentStatus === 'pago' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-red-500 border-red-500 text-white'}`}
+                                                                            >
+                                                                                {p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
                                                                             </button>
-                                                                        ))}
+                                                                            {p.type === 'mensalista' && (
+                                                                                <input 
+                                                                                    type="date" 
+                                                                                    value={p.dueDate || ''} 
+                                                                                    onChange={(e) => updatePlayer(p.id, 'dueDate', e.target.value)}
+                                                                                    className="text-[8px] border border-zinc-200 rounded px-1 focus:outline-none"
+                                                                                />
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -724,6 +925,193 @@
 
                                         {adminSubTab === 'draw' && (
                                             <div className="space-y-6">
+                                                {/* Seção de Convidados */}
+                                                {!showAddGuestForm ? (
+                                                    <div className="flex justify-center">
+                                                        <button 
+                                                            onClick={() => setShowAddGuestForm(true)}
+                                                            className="bg-zinc-100 text-zinc-600 px-4 py-2 rounded-xl text-[10px] font-bold border border-zinc-200 flex items-center gap-2 hover:bg-zinc-200 transition-all"
+                                                        >
+                                                            <Icon name="user-plus" size={14} /> + CONVIDADO
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200 animate-in fade-in zoom-in duration-300">
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-2">
+                                                                <Icon name="user-plus" size={16} />
+                                                                Adicionar Convidado
+                                                            </h3>
+                                                            <button onClick={() => setShowAddGuestForm(false)} className="text-zinc-400 hover:text-zinc-600">
+                                                                <Icon name="x" size={20} />
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <input 
+                                                                type="text" 
+                                                                value={newGuestName} 
+                                                                onChange={(e) => setNewGuestName(e.target.value)} 
+                                                                placeholder="Nome do Convidado" 
+                                                                className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" 
+                                                            />
+                                                            <div className="flex items-center justify-between bg-zinc-50 p-2 rounded-xl">
+                                                                <div className="flex gap-1">
+                                                                    {[1, 2, 3, 4, 5].map((star) => (
+                                                                        <button key={star} onClick={() => setNewGuestRating(star)} className={`p-1 ${newGuestRating >= star ? 'text-amber-400' : 'text-zinc-300'}`}>
+                                                                            <Icon name="star" size={18} fill={newGuestRating >= star ? "currentColor" : "none"} />
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <button 
+                                                                        onClick={() => setIsGuestGoalkeeper(!isGuestGoalkeeper)} 
+                                                                        className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${isGuestGoalkeeper ? 'bg-emerald-100 border-emerald-500 text-emerald-600' : 'bg-zinc-100 border-zinc-200 text-zinc-400'}`}
+                                                                    >
+                                                                        GOLEIRO
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => setIsGuestPaid(!isGuestPaid)} 
+                                                                        className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${isGuestPaid ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-red-500 border-red-500 text-white'}`}
+                                                                    >
+                                                                        {isGuestPaid ? 'PAGO' : 'NÃO PAGO'}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <button onClick={() => setShowAddGuestForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 font-semibold py-3 rounded-xl text-xs">Cancelar</button>
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        if (!newGuestName.trim()) return;
+                                                                        if (!isGuestPaid) {
+                                                                            alert('Convidado deve pagar antes de ser adicionado!');
+                                                                            return;
+                                                                        }
+                                                                        const updatedGuests = [...guests, {
+                                                                            id: `guest-${Date.now()}`,
+                                                                            name: newGuestName.trim() + ' (Conv.)',
+                                                                            level: newGuestRating,
+                                                                            isGoalkeeper: isGuestGoalkeeper,
+                                                                            isGuest: true
+                                                                        }];
+                                                                        setGuests(updatedGuests);
+                                                                        saveData(players, finances, undefined, matchHistory, showDaySummary, updatedGuests);
+                                                                        setNewGuestName('');
+                                                                        setNewGuestRating(3);
+                                                                        setIsGuestGoalkeeper(false);
+                                                                        setIsGuestPaid(true);
+                                                                        setShowAddGuestForm(false);
+                                                                    }} 
+                                                                    className="flex-2 bg-zinc-800 text-white font-bold py-3 rounded-xl text-xs"
+                                                                >
+                                                                    ADICIONAR
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </section>
+                                                )}
+
+                                                {guests.length > 0 && !showAddGuestForm && (
+                                                    <div className="bg-white p-4 rounded-2xl border border-zinc-200 space-y-2">
+                                                        <p className="text-[10px] font-bold text-zinc-400 uppercase">Convidados do Dia:</p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {guests.map(g => (
+                                                                <div key={g.id} className="bg-zinc-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                                                                    <span className="text-xs font-medium text-zinc-700">{g.name}</span>
+                                                                    <button onClick={() => {
+                                                                        const updatedGuests = guests.filter(guest => guest.id !== g.id);
+                                                                        setGuests(updatedGuests);
+                                                                        saveData(players, finances, undefined, matchHistory, showDaySummary, updatedGuests);
+                                                                    }} className="text-zinc-400 hover:text-red-500">
+                                                                        <Icon name="x" size={14} />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Confirmação de Presença */}
+                                                <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200 space-y-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                                                            <Icon name="users" size={16} />
+                                                            Presença do Dia
+                                                        </h3>
+                                                        <span className="text-[10px] font-black bg-emerald-100 text-emerald-600 px-2 py-1 rounded-lg">
+                                                            {confirmedPlayerIds.length + guests.length} NO BABA
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
+                                                        {players.filter(p => !p.isPunished).map(p => {
+                                                            const isConfirmed = confirmedPlayerIds.includes(p.id);
+                                                            return (
+                                                                <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isConfirmed ? 'bg-emerald-50/50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 opacity-70'}`}>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                if (!isConfirmed && p.type === 'diarista' && p.paymentStatus !== 'pago') {
+                                                                                    alert('Diarista deve pagar antes de ser confirmado!');
+                                                                                    return;
+                                                                                }
+                                                                                const newConfirmed = isConfirmed 
+                                                                                    ? confirmedPlayerIds.filter(id => id !== p.id)
+                                                                                    : [...confirmedPlayerIds, p.id];
+                                                                                setConfirmedPlayerIds(newConfirmed);
+                                                                                saveData(players, finances, undefined, undefined, undefined, undefined, newConfirmed);
+                                                                            }}
+                                                                            className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${isConfirmed ? 'bg-emerald-500 text-white' : 'bg-zinc-200 text-transparent'}`}
+                                                                        >
+                                                                            <Icon name="check" size={12} />
+                                                                        </button>
+                                                                        <div>
+                                                                            <p className={`text-xs font-bold ${isConfirmed ? 'text-zinc-900' : 'text-zinc-500'}`}>{p.name}</p>
+                                                                            <div className="flex items-center gap-2 mt-0.5">
+                                                                                <span className={`text-[8px] font-black uppercase ${p.type === 'mensalista' ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                                                                    {p.type === 'mensalista' ? 'Mensalista' : 'Diarista'}
+                                                                                </span>
+                                                                                <span className={`text-[8px] font-bold px-1 rounded ${p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                                    {p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex gap-0.5 mt-0.5">
+                                                                                {Array.from({ length: p.level || 0 }).map((_, i) => (
+                                                                                    <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex gap-1">
+                                                                        {!isConfirmed && (
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    if (confirm(`Punir ${p.name} por falta sem aviso?`)) {
+                                                                                        const updatedPlayers = players.map(pl => pl.id === p.id ? {...pl, isPunished: true} : pl);
+                                                                                        setPlayers(updatedPlayers);
+                                                                                        const newConfirmed = confirmedPlayerIds.filter(id => id !== p.id);
+                                                                                        setConfirmedPlayerIds(newConfirmed);
+                                                                                        saveData(updatedPlayers, finances, undefined, undefined, undefined, undefined, newConfirmed);
+                                                                                    }
+                                                                                }}
+                                                                                className="p-2 rounded-lg text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                                                title="Punir por falta"
+                                                                            >
+                                                                                <Icon name="alert-circle" size={16} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    
+                                                    {players.filter(p => !p.isPunished && !confirmedPlayerIds.includes(p.id)).length > 0 && (
+                                                        <p className="text-[10px] text-center text-zinc-400 italic">
+                                                            {players.filter(p => !p.isPunished && !confirmedPlayerIds.includes(p.id)).length} jogadores ainda não confirmados
+                                                        </p>
+                                                    )}
+                                                </section>
+
                                                 {teams.length > 0 ? (
                                                     <div className="space-y-4">
                                                         <div className="bg-white p-6 rounded-3xl border border-zinc-200 space-y-4">
@@ -760,11 +1148,26 @@
                                                             <Icon name="shuffle" size={40} />
                                                         </div>
                                                         <h3 className="text-xl font-bold">Sorteio de Times</h3>
-                                                        <div className="bg-zinc-50 p-4 rounded-2xl border flex justify-between items-center">
-                                                            <span className="text-sm font-bold text-zinc-600">Membros Ativos:</span>
-                                                            <span className="text-xl font-black text-emerald-600">{players.filter(p => !p.isPunished).length}</span>
+                                                        <div className="bg-zinc-50 p-4 rounded-2xl border space-y-2">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-sm font-bold text-zinc-600">Membros Confirmados:</span>
+                                                                <span className="text-xl font-black text-emerald-600">{confirmedPlayerIds.length}</span>
+                                                            </div>
+                                                            {guests.length > 0 && (
+                                                                <div className="flex justify-between items-center pt-2 border-t border-zinc-200">
+                                                                    <span className="text-sm font-bold text-zinc-600">Convidados:</span>
+                                                                    <span className="text-xl font-black text-zinc-800">{guests.length}</span>
+                                                                </div>
+                                                            )}
+                                                            <div className="flex justify-between items-center pt-2 border-t border-zinc-200">
+                                                                <span className="text-sm font-bold text-zinc-600">Total para Sorteio:</span>
+                                                                <span className="text-xl font-black text-emerald-600">{confirmedPlayerIds.length + guests.length}</span>
+                                                            </div>
                                                         </div>
-                                                        <button onClick={generateTeams} className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl shadow-lg">REALIZAR SORTEIO</button>
+                                                        <button onClick={generateTeams} className="w-full bg-emerald-600 text-white font-black py-6 rounded-2xl shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-3 animate-pulse">
+                                                            <Icon name="shuffle" size={24} />
+                                                            REALIZAR SORTEIO
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
