@@ -95,6 +95,9 @@
             const [financeDesc, setFinanceDesc] = useState('');
             const [financeAmount, setFinanceAmount] = useState('');
             const [financeType, setFinanceType] = useState('income');
+            const [mensalidadeValue, setMensalidadeValue] = useState(30);
+            const [diariaValue, setDiariaValue] = useState(8);
+            const [isSavingSettings, setIsSavingSettings] = useState(false);
 
             // Match States
             const [teams, setTeams] = useState([]); // Array of { name: 'Time 1', players: [], score: 0 }
@@ -119,6 +122,8 @@
                             const rawHistory = data.record.matchHistory || [];
                             const rawGuests = data.record.guests || [];
                             const rawConfirmed = data.record.confirmedPlayerIds || [];
+                            const rawMensalidade = data.record.mensalidadeValue || 30;
+                            const rawDiaria = data.record.diariaValue || 8;
                             
                             // Check for expirations
                             const today = new Date();
@@ -140,6 +145,8 @@
                             setFinances(rawFinances);
                             setMatchHistory(rawHistory);
                             setGuests(rawGuests);
+                            setMensalidadeValue(rawMensalidade);
+                            setDiariaValue(rawDiaria);
                             
                             // Always filter confirmed list to only include paid players
                             let finalConfirmed = rawConfirmed.filter(id => {
@@ -157,7 +164,7 @@
                             setShowDaySummary(data.record.showDaySummary || false);
 
                             if (expirationsChanged) {
-                                saveData(processedPlayers, rawFinances, data.record.lastDraw, rawHistory, data.record.showDaySummary, rawGuests, finalConfirmed);
+                                saveData(processedPlayers, rawFinances, data.record.lastDraw, rawHistory, data.record.showDaySummary, rawGuests, finalConfirmed, rawMensalidade, rawDiaria);
                             }
                             if (data.record.lastDraw) {
                                 if (data.record.lastDraw.teams) {
@@ -183,14 +190,17 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds) => {
+            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria) => {
                 try {
                     const currentDraw = lastDraw !== undefined ? lastDraw : (teams.length > 0 ? { teams, currentMatchTeams } : null);
                     const historyToSave = newHistory !== undefined ? newHistory : matchHistory;
                     const summaryToSave = newShowSummary !== undefined ? newShowSummary : showDaySummary;
                     const guestsToSave = newGuests !== undefined ? newGuests : guests;
                     const confirmedToSave = newConfirmedIds !== undefined ? newConfirmedIds : confirmedPlayerIds;
-                    await fetch(API_URL, {
+                    const mensalidadeToSave = newMensalidade !== undefined ? newMensalidade : mensalidadeValue;
+                    const diariaToSave = newDiaria !== undefined ? newDiaria : diariaValue;
+                    
+                    const response = await fetch(API_URL, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
@@ -203,11 +213,19 @@
                             matchHistory: historyToSave,
                             showDaySummary: summaryToSave,
                             guests: guestsToSave,
-                            confirmedPlayerIds: confirmedToSave
+                            confirmedPlayerIds: confirmedToSave,
+                            mensalidadeValue: mensalidadeToSave,
+                            diariaValue: diariaToSave
                         })
                     });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
+                    }
                 } catch (error) {
                     console.error("Erro ao salvar dados:", error);
+                    alert("Erro ao salvar dados: " + error.message);
                 }
             };
 
@@ -347,7 +365,7 @@
                 let listText = `*⚽💨💨🏃🏻LISTA DO BABA GOSTOSINHO*\n\n`;
                 listText += ` *${dateStr} - Sábado* ⚽🏆\n`;
                 listText += `*Horário - 15:30 horas da tarde*\n`;
-                listText += ` *Valor: 8,00* \n`;
+                listText += ` *Valor: ${diariaValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}* \n`;
                 listText += ` *Chave PIX : 7799930-4025*\n`;
                 listText += `*Esmael de Souza Silva*\n`;
                 listText += `⚠️ *OBRIGATÓRIO COLETES AZUL E VERMELHO ⚠️*\n\n`;
@@ -731,10 +749,52 @@
                                         {adminSubTab === 'finance' && (
                                             <div className="space-y-6">
                                                 <div className="bg-emerald-600 p-6 rounded-3xl text-white shadow-lg shadow-emerald-600/20">
-                                                    <p className="text-xs font-bold uppercase tracking-widest opacity-80">Saldo Total</p>
-                                                    <p className="text-4xl font-black">R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                                                </div>
-                                                <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                                                     <p className="text-xs font-bold uppercase tracking-widest opacity-80">Saldo Total</p>
+                                                     <p className="text-4xl font-black">R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                 </div>
+
+                                                 {/* Configuração de Valores */}
+                                                 <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                                                     <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
+                                                         <Icon name="settings" size={16} />
+                                                         Configuração de Valores
+                                                     </h3>
+                                                     <div className="grid grid-cols-2 gap-4">
+                                                         <div className="space-y-1">
+                                                             <label className="text-[10px] font-bold text-zinc-400 uppercase">Mensalidade (R$)</label>
+                                                             <input 
+                                                                 type="number" 
+                                                                 value={mensalidadeValue} 
+                                                                 onChange={(e) => setMensalidadeValue(parseFloat(e.target.value) || 0)} 
+                                                                 className="w-full px-4 py-2 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-sm font-bold" 
+                                                             />
+                                                         </div>
+                                                         <div className="space-y-1">
+                                                             <label className="text-[10px] font-bold text-zinc-400 uppercase">Diária (R$)</label>
+                                                             <input 
+                                                                 type="number" 
+                                                                 value={diariaValue} 
+                                                                 onChange={(e) => setDiariaValue(parseFloat(e.target.value) || 0)} 
+                                                                 className="w-full px-4 py-2 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-sm font-bold" 
+                                                             />
+                                                         </div>
+                                                     </div>
+                                                     <button 
+                                                        disabled={isSavingSettings}
+                                                        onClick={async () => {
+                                                            setIsSavingSettings(true);
+                                                            await saveData(players, finances, undefined, undefined, undefined, undefined, undefined, mensalidadeValue, diariaValue);
+                                                            setIsSavingSettings(false);
+                                                            alert("Valores atualizados com sucesso!");
+                                                        }}
+                                                        className={`w-full mt-4 flex items-center justify-center gap-2 font-bold py-2 rounded-xl text-xs uppercase tracking-widest transition-colors ${isSavingSettings ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed' : 'bg-zinc-900 text-white hover:bg-zinc-800'}`}
+                                                     >
+                                                         {isSavingSettings ? <div className="w-3 h-3 border-2 border-zinc-300 border-t-zinc-600 rounded-full animate-spin"></div> : <Icon name="save" size={14} />}
+                                                         {isSavingSettings ? 'SALVANDO...' : 'SALVAR REAJUSTE'}
+                                                     </button>
+                                                 </section>
+
+                                                 <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
                                                     <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
                                                         <Icon name="dollar-sign" size={16} />
                                                         Nova Transação
