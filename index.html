@@ -120,6 +120,10 @@
             const [showDaySummary, setShowDaySummary] = useState(false);
             const [timerSeconds, setTimerSeconds] = useState(0);
             const [isTimerRunning, setIsTimerRunning] = useState(false);
+            const [drawNumTeams, setDrawNumTeams] = useState(2);
+            const [drawPlayersPerTeam, setDrawPlayersPerTeam] = useState(6);
+            const [drawIncludeGoalkeepers, setDrawIncludeGoalkeepers] = useState(true);
+            const [drawMode, setDrawMode] = useState('teams');
             const timerRef = useRef(null);
 
             // Carregar dados do JSONbin
@@ -546,17 +550,25 @@
             };
 
             const generateTeams = () => {
-                const confirmedPlayers = players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isPunished);
-                const activePlayersPool = [...confirmedPlayers, ...guests];
+                let confirmedPlayers = players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isPunished);
+                let activeGuests = [...guests];
+
+                if (!drawIncludeGoalkeepers) {
+                    confirmedPlayers = confirmedPlayers.filter(p => !p.isGoalkeeper);
+                    activeGuests = activeGuests.filter(g => !g.isGoalkeeper);
+                }
+
+                const activePlayersPool = [...confirmedPlayers, ...activeGuests];
                 if (activePlayersPool.length < 2) {
                     alert('Selecione pelo menos 2 jogadores para o sorteio!');
                     return;
                 }
                 const sorted = activePlayersPool.sort((a, b) => b.level - a.level);
                 
-                let numTeams = 2;
-                if (sorted.length > 18) numTeams = 4;
-                else if (sorted.length > 12) numTeams = 3;
+                let numTeams = drawNumTeams;
+                if (drawMode === 'players') {
+                    numTeams = Math.max(2, Math.ceil(sorted.length / drawPlayersPerTeam));
+                }
 
                 const newTeams = Array.from({ length: numTeams }, (_, i) => ({
                     id: i + 1,
@@ -1204,9 +1216,9 @@
                                                                     </button>
                                                                     <button 
                                                                         onClick={() => setIsGuestPaid(!isGuestPaid)} 
-                                                                        className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${isGuestPaid ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-red-500 border-red-500 text-white'}`}
+                                                                        className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${isGuestGoalkeeper ? 'bg-amber-100 border-amber-500 text-amber-600' : (isGuestPaid ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-red-500 border-red-500 text-white')}`}
                                                                     >
-                                                                        {isGuestPaid ? 'PAGO' : 'NÃO PAGO'}
+                                                                        {isGuestGoalkeeper ? 'ISENTO' : (isGuestPaid ? 'PAGO' : 'NÃO PAGO')}
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -1215,7 +1227,7 @@
                                                                 <button 
                                                                     onClick={() => {
                                                                         if (!newGuestName.trim()) return;
-                                                                        if (!isGuestPaid) {
+                                                                        if (!isGuestPaid && !isGuestGoalkeeper) {
                                                                             alert('Convidado deve pagar antes de ser adicionado!');
                                                                             return;
                                                                         }
@@ -1249,7 +1261,7 @@
                                                         <div className="flex flex-wrap gap-2">
                                                             {guests.map(g => (
                                                                 <div key={g.id} className="bg-zinc-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                                                                    <span className="text-xs font-medium text-zinc-700">{g.name}</span>
+                                                                    <span className="text-xs font-medium text-zinc-700">{g.name} {g.isGoalkeeper && <span className="text-[8px] bg-amber-100 text-amber-600 px-1 rounded ml-1">GK</span>}</span>
                                                                     <button onClick={() => {
                                                                         const updatedGuests = guests.filter(guest => guest.id !== g.id);
                                                                         setGuests(updatedGuests);
@@ -1283,7 +1295,7 @@
                                                                     <div className="flex items-center gap-3">
                                                                         <button 
                                                                             onClick={() => {
-                                                                                if (!isConfirmed && p.type === 'diarista' && p.paymentStatus !== 'pago') {
+                                                                                if (!isConfirmed && p.type === 'diarista' && p.paymentStatus !== 'pago' && !p.isGoalkeeper) {
                                                                                     alert('Diarista deve pagar antes de ser confirmado!');
                                                                                     return;
                                                                                 }
@@ -1303,8 +1315,8 @@
                                                                                 <span className={`text-[8px] font-black uppercase ${p.type === 'mensalista' ? 'text-emerald-600' : 'text-zinc-400'}`}>
                                                                                     {p.type === 'mensalista' ? 'Mensalista' : 'Diarista'}
                                                                                 </span>
-                                                                                <span className={`text-[8px] font-bold px-1 rounded ${p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                                                                    {p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
+                                                                                <span className={`text-[8px] font-bold px-1 rounded ${p.isGoalkeeper ? 'bg-amber-100 text-amber-700' : p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                                    {p.isGoalkeeper ? 'ISENTO' : p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
                                                                                 </span>
                                                                             </div>
                                                                             <div className="flex gap-0.5 mt-0.5">
@@ -1383,18 +1395,63 @@
                                                         <h3 className="text-xl font-bold">Sorteio de Times</h3>
                                                         <div className="bg-zinc-50 p-4 rounded-2xl border space-y-2">
                                                             <div className="flex justify-between items-center">
-                                                                <span className="text-sm font-bold text-zinc-600">Membros Confirmados:</span>
-                                                                <span className="text-xl font-black text-emerald-600">{confirmedPlayerIds.length}</span>
-                                                            </div>
-                                                            {guests.length > 0 && (
-                                                                <div className="flex justify-between items-center pt-2 border-t border-zinc-200">
-                                                                    <span className="text-sm font-bold text-zinc-600">Convidados:</span>
-                                                                    <span className="text-xl font-black text-zinc-800">{guests.length}</span>
-                                                                </div>
-                                                            )}
-                                                            <div className="flex justify-between items-center pt-2 border-t border-zinc-200">
                                                                 <span className="text-sm font-bold text-zinc-600">Total para Sorteio:</span>
-                                                                <span className="text-xl font-black text-emerald-600">{confirmedPlayerIds.length + guests.length}</span>
+                                                                <span className="text-xl font-black text-emerald-600">
+                                                                    {[...players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isPunished), ...guests]
+                                                                        .filter(p => drawIncludeGoalkeepers || !p.isGoalkeeper).length}
+                                                                </span>
+                                                            </div>
+
+                                                            <div className="pt-4 border-t border-zinc-200 space-y-4">
+                                                                {/* Opção Goleiros */}
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-bold text-zinc-500 uppercase">Incluir Goleiros?</span>
+                                                                    <button 
+                                                                        onClick={() => setDrawIncludeGoalkeepers(!drawIncludeGoalkeepers)}
+                                                                        className={`w-12 h-6 rounded-full transition-all relative ${drawIncludeGoalkeepers ? 'bg-emerald-500' : 'bg-zinc-300'}`}
+                                                                    >
+                                                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${drawIncludeGoalkeepers ? 'left-7' : 'left-1'}`} />
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* Modo de Sorteio */}
+                                                                <div className="space-y-2">
+                                                                    <span className="text-xs font-bold text-zinc-500 uppercase block">Modo de Sorteio</span>
+                                                                    <div className="flex bg-zinc-200 p-1 rounded-xl">
+                                                                        <button 
+                                                                            onClick={() => setDrawMode('teams')}
+                                                                            className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition-all ${drawMode === 'teams' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'}`}
+                                                                        >
+                                                                            Nº DE TIMES
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => setDrawMode('players')}
+                                                                            className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition-all ${drawMode === 'players' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'}`}
+                                                                        >
+                                                                            JOGADORES / TIME
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Valor do Sorteio */}
+                                                                <div className="space-y-2">
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span className="text-xs font-bold text-zinc-500 uppercase">
+                                                                            {drawMode === 'teams' ? 'Quantidade de Times' : 'Jogadores por Time'}
+                                                                        </span>
+                                                                        <span className="text-lg font-black text-zinc-800">
+                                                                            {drawMode === 'teams' ? drawNumTeams : drawPlayersPerTeam}
+                                                                        </span>
+                                                                    </div>
+                                                                    <input 
+                                                                        type="range" 
+                                                                        min="2" 
+                                                                        max={drawMode === 'teams' ? "6" : "12"} 
+                                                                        value={drawMode === 'teams' ? drawNumTeams : drawPlayersPerTeam}
+                                                                        onChange={(e) => drawMode === 'teams' ? setDrawNumTeams(parseInt(e.target.value)) : setDrawPlayersPerTeam(parseInt(e.target.value))}
+                                                                        className="w-full h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                                                    />
+                                                                </div>
                                                             </div>
                                                         </div>
                                                         <button onClick={generateTeams} className="w-full bg-emerald-600 text-white font-black py-6 rounded-2xl shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-3 animate-pulse">
@@ -1491,7 +1548,7 @@
                                                             <div className="flex items-center gap-3">
                                                                 <button 
                                                                     onClick={() => {
-                                                                        if (!isConfirmed && p.type === 'diarista' && p.paymentStatus !== 'pago') {
+                                                                        if (!isConfirmed && p.type === 'diarista' && p.paymentStatus !== 'pago' && !p.isGoalkeeper) {
                                                                             alert('Diarista deve pagar antes de ser confirmado!');
                                                                             return;
                                                                         }
@@ -1511,8 +1568,8 @@
                                                                         <span className={`text-[8px] font-black uppercase ${p.type === 'mensalista' ? 'text-emerald-600' : 'text-zinc-400'}`}>
                                                                             {p.type === 'mensalista' ? 'Mensalista' : 'Diarista'}
                                                                         </span>
-                                                                        <span className={`text-[8px] font-bold px-1 rounded ${p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                                                            {p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
+                                                                        <span className={`text-[8px] font-bold px-1 rounded ${p.isGoalkeeper ? 'bg-amber-100 text-amber-700' : p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                            {p.isGoalkeeper ? 'ISENTO' : p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
                                                                         </span>
                                                                     </div>
                                                                 </div>
@@ -1533,7 +1590,7 @@
                                                     <div className="flex flex-wrap gap-2">
                                                         {guests.map(g => (
                                                             <div key={g.id} className="bg-yellow-50 border border-yellow-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                                                                <span className="text-xs font-bold text-yellow-700">{g.name}</span>
+                                                                <span className="text-xs font-bold text-yellow-700">{g.name} {g.isGoalkeeper && <span className="text-[8px] bg-amber-100 text-amber-600 px-1 rounded ml-1">GK</span>}</span>
                                                                 <div className="flex gap-0.5">
                                                                     {Array.from({ length: g.level }).map((_, i) => (
                                                                         <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
