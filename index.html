@@ -289,7 +289,9 @@
                     dueDate: newPlayerDueDate,
                     author: currentUser,
                     isGoalkeeper: isGoalkeeper,
-                    isPunished: isPunished
+                    isPunished: isPunished,
+                    presences: 0,
+                    totalBabas: 0
                 };
                 const updatedPlayers = [...players, newPlayer];
                 setPlayers(updatedPlayers);
@@ -660,20 +662,28 @@
                     });
                 });
 
-                // Reset diaristas payment status
+                // Reset diaristas payment status and update frequency
                 const updatedPlayers = players.map(p => {
+                    const isConfirmed = confirmedPlayerIds.includes(p.id);
+                    let updated = { 
+                        ...p, 
+                        totalBabas: (p.totalBabas || 0) + 1,
+                        presences: (p.presences || 0) + (isConfirmed ? 1 : 0)
+                    };
+                    
                     if (p.type === 'diarista') {
-                        return { ...p, paymentStatus: 'devendo' };
+                        updated.paymentStatus = 'devendo';
                     }
-                    return p;
+                    return updated;
                 });
                 
                 setPlayers(updatedPlayers);
+                setConfirmedPlayerIds([]); // Limpa confirmados ao encerrar o dia
                 setFinances(newFinances);
                 setGuests([]); // Limpa convidados ao encerrar o dia
 
                 setShowDaySummary(true);
-                saveData(updatedPlayers, newFinances, undefined, undefined, true, []);
+                saveData(updatedPlayers, newFinances, undefined, undefined, true, [], []);
             };
 
             const resetDay = () => {
@@ -1118,6 +1128,15 @@
                                                                                     onChange={(e) => updatePlayer(p.id, 'dueDate', e.target.value)}
                                                                                     className="text-[8px] border border-zinc-200 rounded px-1 focus:outline-none"
                                                                                 />
+                                                                            )}
+                                                                            {p.totalBabas > 0 && (
+                                                                                <span className={`text-[8px] font-bold px-1 rounded ${
+                                                                                    (p.presences / p.totalBabas) >= 0.75 ? 'bg-emerald-50 text-emerald-600' :
+                                                                                    (p.presences / p.totalBabas) >= 0.5 ? 'bg-amber-50 text-amber-600' :
+                                                                                    'bg-red-50 text-red-600'
+                                                                                }`}>
+                                                                                    FREQ: {Math.round((p.presences / p.totalBabas) * 100)}%
+                                                                                </span>
                                                                             )}
                                                                         </div>
                                                                     </div>
