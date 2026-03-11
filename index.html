@@ -104,6 +104,7 @@
             const [newPlayerDueDate, setNewPlayerDueDate] = useState('');
             const [isGoalkeeper, setIsGoalkeeper] = useState(false);
             const [isPunished, setIsPunished] = useState(false);
+            const [newPlayerPunishmentCount, setNewPlayerPunishmentCount] = useState(1);
             const [financeDesc, setFinanceDesc] = useState('');
             const [financeAmount, setFinanceAmount] = useState('');
             const [financeType, setFinanceType] = useState('income');
@@ -153,10 +154,10 @@
                                     const dueDate = new Date(year, month - 1, day);
                                     if (dueDate < today) {
                                         expirationsChanged = true;
-                                        return { ...p, paymentStatus: 'não' };
+                                        return { ...p, paymentStatus: 'não', punishmentCount: p.punishmentCount || 0 };
                                     }
                                 }
-                                return p;
+                                return { ...p, punishmentCount: p.punishmentCount || 0 };
                             });
 
                             setPlayers(processedPlayers);
@@ -294,6 +295,7 @@
                     author: currentUser,
                     isGoalkeeper: isGoalkeeper,
                     isPunished: isPunished,
+                    punishmentCount: isPunished ? newPlayerPunishmentCount : 0,
                     presences: 0,
                     totalBabas: 0
                 };
@@ -329,6 +331,7 @@
                 setNewPlayerDueDate('');
                 setIsGoalkeeper(false);
                 setIsPunished(false);
+                setNewPlayerPunishmentCount(1);
                 setShowAddPlayerForm(false);
             };
 
@@ -443,7 +446,7 @@
                 listText += `*LISTA DE PUNIDOS - R$ 15,00*\n`;
                 for (let i = 1; i <= 3; i++) {
                     const p = punished[i-1];
-                    listText += `${i}- ${p ? p.name : ''}\n`;
+                    listText += `${i}- ${p ? `${p.name} (${p.punishmentCount} babas)` : ''}\n`;
                 }
 
                 listText += `\n*OBS:* \n\n`;
@@ -705,10 +708,20 @@
                 setShowDaySummary(false);
                 
                 const updatedPlayers = players.map(p => {
-                    if (p.type === 'diarista') {
-                        return { ...p, paymentStatus: 'devendo' };
+                    let updated = { ...p };
+                    
+                    // Decrementar punição
+                    if (updated.isPunished && updated.punishmentCount > 0) {
+                        updated.punishmentCount -= 1;
+                        if (updated.punishmentCount === 0) {
+                            updated.isPunished = false;
+                        }
                     }
-                    return p;
+
+                    if (updated.type === 'diarista') {
+                        updated.paymentStatus = 'devendo';
+                    }
+                    return updated;
                 });
                 setPlayers(updatedPlayers);
 
@@ -1102,6 +1115,19 @@
                                                                     PUNIDO
                                                                 </button>
                                                             </div>
+
+                                                            {isPunished && (
+                                                                <div className="flex items-center justify-between bg-red-50 p-3 rounded-xl border border-red-100">
+                                                                    <span className="text-xs font-bold text-red-600 uppercase">Babas de fora:</span>
+                                                                    <input 
+                                                                        type="number" 
+                                                                        min="1"
+                                                                        value={newPlayerPunishmentCount}
+                                                                        onChange={(e) => setNewPlayerPunishmentCount(parseInt(e.target.value) || 1)}
+                                                                        className="w-16 px-2 py-1 text-xs rounded border border-red-200 focus:outline-none text-center font-bold"
+                                                                    />
+                                                                </div>
+                                                            )}
                                                             <div className="flex gap-2">
                                                                 <button onClick={() => setShowAddPlayerForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 font-semibold py-3 rounded-xl">Cancelar</button>
                                                                 <button onClick={addPlayer} className="flex-2 bg-emerald-600 text-white font-semibold py-3 rounded-xl">Confirmar</button>
@@ -1120,10 +1146,48 @@
                                                                     <p className="font-semibold text-zinc-800 flex items-center">
                                                                         {p.name}{getAuthorTag(p.author)}
                                                                         {p.isGoalkeeper && <span className="ml-2 text-[8px] bg-amber-100 text-amber-600 px-1 rounded">GK</span>}
-                                                                        {p.isPunished && <span className="ml-2 text-[8px] bg-red-100 text-red-600 px-1 rounded">PUNIDO</span>}
+                                                                        {p.isPunished && (
+                                                                            <span className="ml-2 text-[8px] bg-red-100 text-red-600 px-1 rounded flex items-center gap-1">
+                                                                                PUNIDO ({p.punishmentCount})
+                                                                            </span>
+                                                                        )}
                                                                         <span className={`ml-2 text-[8px] px-1 rounded cursor-pointer ${p.type === 'mensalista' ? 'bg-emerald-100 text-emerald-600' : 'bg-zinc-100 text-zinc-500'}`} onClick={() => updatePlayer(p.id, 'type', p.type === 'mensalista' ? 'diarista' : 'mensalista')}>
                                                                             {p.type?.toUpperCase() || 'DIARISTA'}
                                                                         </span>
+                                                                        
+                                                                        {/* Botões de Punição */}
+                                                                        <div className="ml-auto flex items-center gap-1">
+                                                                            {!p.isPunished ? (
+                                                                                <button 
+                                                                                    onClick={() => {
+                                                                                        const count = prompt('Quantos babas de punição?', '1');
+                                                                                        if (count && !isNaN(count)) {
+                                                                                            const updatedPlayers = players.map(player => 
+                                                                                                player.id === p.id ? { ...player, isPunished: true, punishmentCount: parseInt(count) } : player
+                                                                                            );
+                                                                                            setPlayers(updatedPlayers);
+                                                                                            saveData(updatedPlayers, finances, undefined, matchHistory);
+                                                                                        }
+                                                                                    }}
+                                                                                    className="text-[8px] font-bold text-red-500 hover:bg-red-50 px-1.5 py-0.5 rounded border border-red-100"
+                                                                                >
+                                                                                    PUNIR
+                                                                                </button>
+                                                                            ) : (
+                                                                                <button 
+                                                                                    onClick={() => {
+                                                                                        const updatedPlayers = players.map(player => 
+                                                                                            player.id === p.id ? { ...player, isPunished: false, punishmentCount: 0 } : player
+                                                                                        );
+                                                                                        setPlayers(updatedPlayers);
+                                                                                        saveData(updatedPlayers, finances, undefined, matchHistory);
+                                                                                    }}
+                                                                                    className="text-[8px] font-bold text-emerald-500 hover:bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100"
+                                                                                >
+                                                                                    LIBERAR
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
                                                                     </p>
                                                                     <div className="flex flex-col gap-1 mt-1">
                                                                         <div className="flex items-center gap-2">
@@ -1295,8 +1359,8 @@
                                                                     <div className="flex items-center gap-3">
                                                                         <button 
                                                                             onClick={() => {
-                                                                                if (!isConfirmed && p.type === 'diarista' && p.paymentStatus !== 'pago' && !p.isGoalkeeper) {
-                                                                                    alert('Diarista deve pagar antes de ser confirmado!');
+                                                                                if (!isConfirmed && p.paymentStatus !== 'pago' && !p.isGoalkeeper) {
+                                                                                    alert('O jogador deve estar com o pagamento em dia para ser confirmado!');
                                                                                     return;
                                                                                 }
                                                                                 const newConfirmed = isConfirmed 
@@ -1548,8 +1612,8 @@
                                                             <div className="flex items-center gap-3">
                                                                 <button 
                                                                     onClick={() => {
-                                                                        if (!isConfirmed && p.type === 'diarista' && p.paymentStatus !== 'pago' && !p.isGoalkeeper) {
-                                                                            alert('Diarista deve pagar antes de ser confirmado!');
+                                                                        if (!isConfirmed && p.paymentStatus !== 'pago' && !p.isGoalkeeper) {
+                                                                            alert('O jogador deve estar com o pagamento em dia para ser confirmado!');
                                                                             return;
                                                                         }
                                                                         const newConfirmed = isConfirmed 
