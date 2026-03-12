@@ -94,6 +94,7 @@
             const [showAddGuestForm, setShowAddGuestForm] = useState(false);
             const [guests, setGuests] = useState([]);
             const [confirmedPlayerIds, setConfirmedPlayerIds] = useState([]);
+            const [absentCommissionIds, setAbsentCommissionIds] = useState([]);
             const [newGuestName, setNewGuestName] = useState('');
             const [newGuestRating, setNewGuestRating] = useState(3);
             const [isGuestGoalkeeper, setIsGuestGoalkeeper] = useState(false);
@@ -121,6 +122,8 @@
             const [showRoleModal, setShowRoleModal] = useState(false);
             const [selectedPlayerForRole, setSelectedPlayerForRole] = useState(null);
             const [newRolePassword, setNewRolePassword] = useState('');
+            const [roleActionStep, setRoleActionStep] = useState('choice'); // 'choice', 'password', 'config'
+            const [adminPasswordInput, setAdminPasswordInput] = useState('');
             const longPressTimer = useRef(null);
 
             // Match States
@@ -150,6 +153,7 @@
                             const rawHistory = data.record.matchHistory || [];
                             const rawGuests = data.record.guests || [];
                             const rawConfirmed = data.record.confirmedPlayerIds || [];
+                            const rawAbsent = data.record.absentCommissionIds || [];
                             const rawMensalidade = data.record.mensalidadeValue || 30;
                             const rawDiaria = data.record.diariaValue || 8;
                             
@@ -173,6 +177,7 @@
                             setFinances(rawFinances);
                             setMatchHistory(rawHistory);
                             setGuests(rawGuests);
+                            setAbsentCommissionIds(rawAbsent);
                             setMensalidadeValue(rawMensalidade);
                             setDiariaValue(rawDiaria);
                             
@@ -183,8 +188,8 @@
                             });
 
                             if (finalConfirmed.length === 0 && processedPlayers.length > 0 && !data.record.lastDraw) {
-                                const mensalistas = processedPlayers.filter(p => p.type === 'mensalista' && !p.isPunished && p.paymentStatus === 'pago').map(p => p.id);
-                                setConfirmedPlayerIds(mensalistas);
+                                const defaultConfirmed = processedPlayers.filter(p => ((p.type === 'mensalista' && p.paymentStatus === 'pago') || p.role === 'commission') && !p.isPunished).map(p => p.id);
+                                setConfirmedPlayerIds(defaultConfirmed);
                             } else {
                                 setConfirmedPlayerIds(finalConfirmed);
                             }
@@ -192,7 +197,7 @@
                             setShowDaySummary(data.record.showDaySummary || false);
 
                             if (expirationsChanged) {
-                                saveData(processedPlayers, rawFinances, data.record.lastDraw, rawHistory, data.record.showDaySummary, rawGuests, finalConfirmed, rawMensalidade, rawDiaria);
+                                saveData(processedPlayers, rawFinances, data.record.lastDraw, rawHistory, data.record.showDaySummary, rawGuests, finalConfirmed, rawMensalidade, rawDiaria, rawAbsent);
                             }
                             if (data.record.lastDraw) {
                                 if (data.record.lastDraw.teams) {
@@ -218,7 +223,7 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria) => {
+            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds) => {
                 try {
                     const currentDraw = lastDraw !== undefined ? lastDraw : (teams.length > 0 ? { teams, currentMatchTeams } : null);
                     const historyToSave = newHistory !== undefined ? newHistory : matchHistory;
@@ -227,6 +232,7 @@
                     const confirmedToSave = newConfirmedIds !== undefined ? newConfirmedIds : confirmedPlayerIds;
                     const mensalidadeToSave = newMensalidade !== undefined ? newMensalidade : mensalidadeValue;
                     const diariaToSave = newDiaria !== undefined ? newDiaria : diariaValue;
+                    const absentToSave = newAbsentIds !== undefined ? newAbsentIds : absentCommissionIds;
                     
                     const response = await fetch(API_URL, {
                         method: 'PUT',
@@ -243,7 +249,8 @@
                             guests: guestsToSave,
                             confirmedPlayerIds: confirmedToSave,
                             mensalidadeValue: mensalidadeToSave,
-                            diariaValue: diariaToSave
+                            diariaValue: diariaToSave,
+                            absentCommissionIds: absentToSave
                         })
                     });
 
@@ -300,6 +307,7 @@
             const handleLongPressStart = (player) => {
                 longPressTimer.current = setTimeout(() => {
                     setSelectedPlayerForRole(player);
+                    setRoleActionStep('choice');
                     setShowRoleModal(true);
                 }, 800); // 800ms for long press
             };
@@ -307,6 +315,51 @@
             const handleLongPressEnd = () => {
                 if (longPressTimer.current) {
                     clearTimeout(longPressTimer.current);
+                }
+            };
+
+            const isPlayerConfirmed = (player) => {
+                if (!player || player.isPunished) return false;
+                if (player.role === 'commission') {
+                    return !absentCommissionIds.includes(player.id);
+                }
+                return confirmedPlayerIds.includes(player.id);
+            };
+
+            const toggleCommissionAbsence = (player) => {
+                const isCurrentlyAbsent = absentCommissionIds.includes(player.id);
+                const newAbsent = isCurrentlyAbsent 
+                    ? absentCommissionIds.filter(id => id !== player.id)
+                    : [...absentCommissionIds, player.id];
+                setAbsentCommissionIds(newAbsent);
+                saveData(players, finances, undefined, undefined, undefined, undefined, undefined, undefined, undefined, newAbsent);
+                setShowRoleModal(false);
+                setSelectedPlayerForRole(null);
+            };
+
+            const handleRoleAction = () => {
+                if (isAdminMode) {
+                    if (selectedPlayerForRole.role === 'commission') {
+                        removeCommissionRole();
+                    } else {
+                        setRoleActionStep('config');
+                    }
+                    return;
+                }
+
+                // Check admin password
+                const authorizedPasswords = ["Dan2620", "Davi2168"];
+                const commissionMember = players.find(p => p.role === 'commission' && p.password === adminPasswordInput);
+                
+                if (authorizedPasswords.includes(adminPasswordInput) || commissionMember) {
+                    if (selectedPlayerForRole.role === 'commission') {
+                        removeCommissionRole();
+                    } else {
+                        setRoleActionStep('config');
+                    }
+                    setAdminPasswordInput('');
+                } else {
+                    alert("Senha incorreta! Acesso negado.");
                 }
             };
 
@@ -328,6 +381,8 @@
                 setShowRoleModal(false);
                 setSelectedPlayerForRole(null);
                 setNewRolePassword('');
+                setRoleActionStep('choice');
+                setAdminPasswordInput('');
                 alert(`${selectedPlayerForRole.name} agora faz parte da Comissão!`);
             };
 
@@ -344,6 +399,8 @@
                 saveData(updatedPlayers, finances, undefined, matchHistory);
                 setShowRoleModal(false);
                 setSelectedPlayerForRole(null);
+                setRoleActionStep('choice');
+                setAdminPasswordInput('');
                 alert(`Cargo de Comissão removido de ${selectedPlayerForRole.name}.`);
             };
 
@@ -478,12 +535,12 @@
                 const dateStr = nextSaturday.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
                 
                 const activePlayers = isEmpty 
-                    ? players.filter(p => !p.isGoalkeeper && (p.type === 'mensalista' || p.role === 'commission' || p.isPunished))
-                    : players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isGoalkeeper && !p.isPunished);
+                    ? players.filter(p => !p.isGoalkeeper && !p.isPunished && (p.type === 'mensalista' || (p.role === 'commission' && isPlayerConfirmed(p))))
+                    : players.filter(p => isPlayerConfirmed(p) && !p.isGoalkeeper && !p.isPunished);
                 
                 const goalkeepers = isEmpty 
-                    ? players.filter(p => p.isGoalkeeper && p.role === 'commission')
-                    : players.filter(p => confirmedPlayerIds.includes(p.id) && p.isGoalkeeper && !p.isPunished);
+                    ? players.filter(p => p.isGoalkeeper && !p.isPunished && (p.role === 'commission' && isPlayerConfirmed(p)))
+                    : players.filter(p => isPlayerConfirmed(p) && p.isGoalkeeper && !p.isPunished);
                 
                 const punished = players.filter(p => p.isPunished);
 
@@ -623,7 +680,7 @@
             };
 
             const generateTeams = () => {
-                let confirmedPlayers = players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isPunished);
+                let confirmedPlayers = players.filter(p => isPlayerConfirmed(p) && !p.isPunished);
                 let activeGuests = [...guests];
 
                 if (!drawIncludeGoalkeepers) {
@@ -749,7 +806,7 @@
 
                 // Reset diaristas payment status and update frequency
                 const updatedPlayers = players.map(p => {
-                    const isConfirmed = confirmedPlayerIds.includes(p.id);
+                    const isConfirmed = isPlayerConfirmed(p);
                     let updated = { 
                         ...p, 
                         totalBabas: (p.totalBabas || 0) + 1,
@@ -795,9 +852,9 @@
                 });
                 setPlayers(updatedPlayers);
 
-                const mensalistas = updatedPlayers.filter(p => p.type === 'mensalista' && !p.isPunished && p.paymentStatus === 'pago').map(p => p.id);
-                setConfirmedPlayerIds(mensalistas);
-                saveData(updatedPlayers, finances, null, [], false, [], mensalistas);
+                const defaultConfirmed = updatedPlayers.filter(p => ((p.type === 'mensalista' && p.paymentStatus === 'pago') || p.role === 'commission') && !p.isPunished).map(p => p.id);
+                setConfirmedPlayerIds(defaultConfirmed);
+                saveData(updatedPlayers, finances, null, [], false, [], defaultConfirmed);
                 setCurrentTab('home');
             };
 
@@ -1435,23 +1492,24 @@
                                                             Presença do Dia
                                                         </h3>
                                                         <span className="text-[10px] font-black bg-emerald-100 text-emerald-600 px-2 py-1 rounded-lg">
-                                                            {confirmedPlayerIds.length + guests.length} NO BABA
+                                                            {players.filter(p => isPlayerConfirmed(p) && !p.isPunished).length + guests.length} NO BABA
                                                         </span>
                                                     </div>
                                                     
                                                     <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
                                                         {players.filter(p => !p.isPunished).map(p => {
-                                                            const isConfirmed = confirmedPlayerIds.includes(p.id);
+                                                            const isConfirmed = isPlayerConfirmed(p);
                                                             return (
                                                                 <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isConfirmed ? 'bg-emerald-50/50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 opacity-70'}`}>
                                                                     <div className="flex items-center gap-3">
                                                                         <button 
                                                                             onClick={() => {
-                                                                                if (!isConfirmed && p.paymentStatus !== 'pago' && !p.isGoalkeeper) {
+                                                                                if (p.role === 'commission') return;
+                                                                                if (!isConfirmed && p.paymentStatus !== 'pago' && !p.isGoalkeeper && p.role !== 'commission') {
                                                                                     alert('O jogador deve estar com o pagamento em dia para ser confirmado!');
                                                                                     return;
                                                                                 }
-                                                                                const newConfirmed = isConfirmed 
+                                                                                const newConfirmed = confirmedPlayerIds.includes(p.id) 
                                                                                     ? confirmedPlayerIds.filter(id => id !== p.id)
                                                                                     : [...confirmedPlayerIds, p.id];
                                                                                 setConfirmedPlayerIds(newConfirmed);
@@ -1462,14 +1520,37 @@
                                                                             <Icon name="check" size={12} />
                                                                         </button>
                                                                         <div>
-                                                                            <p className={`text-xs font-bold ${isConfirmed ? 'text-zinc-900' : 'text-zinc-500'}`}>{p.name}</p>
+                                                                            <p 
+                                                                                className={`text-xs font-bold ${isConfirmed ? 'text-zinc-900' : 'text-zinc-500'} cursor-pointer select-none`}
+                                                                                onMouseDown={() => handleLongPressStart(p)}
+                                                                                onMouseUp={handleLongPressEnd}
+                                                                                onMouseLeave={handleLongPressEnd}
+                                                                                onTouchStart={() => handleLongPressStart(p)}
+                                                                                onTouchEnd={handleLongPressEnd}
+                                                                            >
+                                                                                {p.name}
+                                                                            </p>
                                                                             <div className="flex items-center gap-2 mt-0.5">
-                                                                                <span className={`text-[8px] font-black uppercase ${p.type === 'mensalista' ? 'text-emerald-600' : 'text-zinc-400'}`}>
-                                                                                    {p.type === 'mensalista' ? 'Mensalista' : 'Diarista'}
-                                                                                </span>
-                                                                                <span className={`text-[8px] font-bold px-1 rounded ${p.isGoalkeeper ? 'bg-amber-100 text-amber-700' : p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                                                                    {p.isGoalkeeper ? 'ISENTO' : p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
-                                                                                </span>
+                                                                                {p.role === 'commission' && (
+                                                                                    <span className="text-[8px] font-black bg-zinc-800 text-white px-1.5 py-0.5 rounded uppercase">Comissão</span>
+                                                                                )}
+                                                                                {isConfirmed ? (
+                                                                                    <span className="text-[8px] font-black bg-emerald-500 text-white px-1.5 py-0.5 rounded uppercase">Confirmado</span>
+                                                                                ) : (
+                                                                                    p.role === 'commission' && (
+                                                                                        <span className="text-[8px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded uppercase">Ausente</span>
+                                                                                    )
+                                                                                )}
+                                                                                {p.role !== 'commission' && (
+                                                                                    <>
+                                                                                        <span className={`text-[8px] font-black uppercase ${p.type === 'mensalista' ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                                                                            {p.type === 'mensalista' ? 'Mensalista' : 'Diarista'}
+                                                                                        </span>
+                                                                                        <span className={`text-[8px] font-bold px-1 rounded ${p.isGoalkeeper ? 'bg-amber-100 text-amber-700' : p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                                            {p.isGoalkeeper ? 'ISENTO' : p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
+                                                                                        </span>
+                                                                                    </>
+                                                                                )}
                                                                             </div>
                                                                             <div className="flex gap-0.5 mt-0.5">
                                                                                 {Array.from({ length: p.level || 0 }).map((_, i) => (
@@ -1502,9 +1583,9 @@
                                                         })}
                                                     </div>
                                                     
-                                                    {players.filter(p => !p.isPunished && !confirmedPlayerIds.includes(p.id)).length > 0 && (
+                                                    {players.filter(p => !p.isPunished && !isPlayerConfirmed(p)).length > 0 && (
                                                         <p className="text-[10px] text-center text-zinc-400 italic">
-                                                            {players.filter(p => !p.isPunished && !confirmedPlayerIds.includes(p.id)).length} jogadores ainda não confirmados
+                                                            {players.filter(p => !p.isPunished && !isPlayerConfirmed(p)).length} jogadores ainda não confirmados
                                                         </p>
                                                     )}
                                                 </section>
@@ -1549,7 +1630,7 @@
                                                             <div className="flex justify-between items-center">
                                                                 <span className="text-sm font-bold text-zinc-600">Total para Sorteio:</span>
                                                                 <span className="text-xl font-black text-emerald-600">
-                                                                    {[...players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isPunished), ...guests]
+                                                                    {[...players.filter(p => isPlayerConfirmed(p) && !p.isPunished), ...guests]
                                                                         .filter(p => drawIncludeGoalkeepers || !p.isGoalkeeper).length}
                                                                 </span>
                                                             </div>
@@ -1648,7 +1729,7 @@
                                     </h2>
                                     {teams.length === 0 && (
                                         <span className="text-[10px] font-black bg-emerald-100 text-emerald-600 px-2 py-1 rounded-lg">
-                                            {confirmedPlayerIds.length + guests.length} NO BABA
+                                            {players.filter(p => isPlayerConfirmed(p) && !p.isPunished).length + guests.length} NO BABA
                                         </span>
                                     )}
                                 </div>
@@ -1688,28 +1769,42 @@
                                                     Presença do Dia
                                                 </h3>
                                                 <span className="text-[10px] font-black bg-emerald-100 text-emerald-600 px-2 py-1 rounded-lg">
-                                                    {confirmedPlayerIds.length + guests.length} NO BABA
+                                                    {players.filter(p => isPlayerConfirmed(p) && !p.isPunished).length + guests.length} NO BABA
                                                 </span>
                                             </div>
                                             
                                             <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto pr-1 custom-scrollbar">
-                                                {players.filter(p => !p.isPunished && confirmedPlayerIds.includes(p.id)).map(p => {
-                                                    const isConfirmed = true;
+                                                {players.filter(p => !p.isPunished && isPlayerConfirmed(p)).map(p => {
+                                                    const isConfirmed = isPlayerConfirmed(p);
                                                     return (
-                                                        <div key={p.id} className="flex items-center justify-between p-3 rounded-xl border transition-all bg-emerald-50/50 border-emerald-200">
+                                                        <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isConfirmed ? 'bg-emerald-50/50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 opacity-70'}`}>
                                                             <div className="flex items-center gap-3">
-                                                                <div className="w-5 h-5 rounded-md flex items-center justify-center bg-emerald-500 text-white">
+                                                                <div className={`w-5 h-5 rounded-md flex items-center justify-center ${isConfirmed ? 'bg-emerald-500 text-white' : 'bg-zinc-200 text-transparent'}`}>
                                                                     <Icon name="check" size={12} />
                                                                 </div>
                                                                 <div>
-                                                                    <p className="text-xs font-bold text-zinc-900">{p.name}</p>
+                                                                    <p className={`text-xs font-bold ${isConfirmed ? 'text-zinc-900' : 'text-zinc-500'}`}>{p.name}</p>
                                                                     <div className="flex items-center gap-2 mt-0.5">
-                                                                        <span className={`text-[8px] font-black uppercase ${p.type === 'mensalista' ? 'text-emerald-600' : 'text-zinc-400'}`}>
-                                                                            {p.type === 'mensalista' ? 'Mensalista' : 'Diarista'}
-                                                                        </span>
-                                                                        <span className={`text-[8px] font-bold px-1 rounded ${p.isGoalkeeper ? 'bg-amber-100 text-amber-700' : p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                                                            {p.isGoalkeeper ? 'ISENTO' : p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
-                                                                        </span>
+                                                                        {p.role === 'commission' && (
+                                                                            <span className="text-[8px] font-black bg-zinc-800 text-white px-1.5 py-0.5 rounded uppercase">Comissão</span>
+                                                                        )}
+                                                                        {isConfirmed ? (
+                                                                            <span className="text-[8px] font-black bg-emerald-500 text-white px-1.5 py-0.5 rounded uppercase">Confirmado</span>
+                                                                        ) : (
+                                                                            p.role === 'commission' && (
+                                                                                <span className="text-[8px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded uppercase">Ausente</span>
+                                                                            )
+                                                                        )}
+                                                                        {p.role !== 'commission' && (
+                                                                            <>
+                                                                                <span className={`text-[8px] font-black uppercase ${p.type === 'mensalista' ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                                                                    {p.type === 'mensalista' ? 'Mensalista' : 'Diarista'}
+                                                                                </span>
+                                                                                <span className={`text-[8px] font-bold px-1 rounded ${p.isGoalkeeper ? 'bg-amber-100 text-amber-700' : p.paymentStatus === 'pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                                    {p.isGoalkeeper ? 'ISENTO' : p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
+                                                                                </span>
+                                                                            </>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1741,7 +1836,7 @@
                                                 </div>
                                             )}
 
-                                            {confirmedPlayerIds.length === 0 && guests.length === 0 && (
+                                            {players.filter(p => isPlayerConfirmed(p) && !p.isPunished).length === 0 && guests.length === 0 && (
                                                 <div className="bg-zinc-50 p-8 rounded-2xl border border-dashed border-zinc-200 text-center">
                                                     <Icon name="users" size={32} className="mx-auto text-zinc-300 mb-2" />
                                                     <p className="text-xs text-zinc-400 font-medium">Nenhuma confirmação ainda.</p>
@@ -1975,7 +2070,7 @@
                         </nav>
                     )}
 
-                    {/* Modal de Cargo de Comissão */}
+                    {/* Modal de Cargo de Comissão e Ausência */}
                     {showRoleModal && selectedPlayerForRole && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                             <motion.div 
@@ -1984,45 +2079,93 @@
                                 className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
                             >
                                 <div className="p-6">
-                                    <h3 className="text-xl font-bold text-zinc-800 mb-2">Definir Cargo</h3>
-                                    <p className="text-zinc-500 text-sm mb-6">
-                                        {selectedPlayerForRole.role === 'commission' 
-                                            ? `Deseja remover o cargo de Comissão de ${selectedPlayerForRole.name}?`
-                                            : `Deseja dar cargo de Comissão a ${selectedPlayerForRole.name}? Ele precisará de uma senha para acessar.`
-                                        }
-                                    </p>
+                                    <h3 className="text-xl font-bold text-zinc-800 mb-2">{selectedPlayerForRole.name}</h3>
+                                    
+                                    {roleActionStep === 'choice' && (
+                                        <div className="space-y-3 mt-4">
+                                            <button 
+                                                onClick={() => {
+                                                    if (isAdminMode) {
+                                                        if (selectedPlayerForRole.role === 'commission') {
+                                                            removeCommissionRole();
+                                                        } else {
+                                                            setRoleActionStep('config');
+                                                        }
+                                                    } else {
+                                                        setRoleActionStep('password');
+                                                    }
+                                                }}
+                                                className="w-full py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Icon name="shield" size={18} />
+                                                {selectedPlayerForRole.role === 'commission' ? 'Remover Cargo' : 'Definir como Comissão'}
+                                            </button>
 
-                                    {selectedPlayerForRole.role !== 'commission' && (
-                                        <div className="mb-6">
-                                            <label className="block text-xs font-bold text-zinc-400 uppercase mb-2">Definir Senha</label>
+                                            {selectedPlayerForRole.role === 'commission' && (
+                                                <button 
+                                                    onClick={() => toggleCommissionAbsence(selectedPlayerForRole)}
+                                                    className={`w-full py-4 rounded-2xl font-bold transition-colors flex items-center justify-center gap-2 ${isPlayerConfirmed(selectedPlayerForRole) ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'}`}
+                                                >
+                                                    <Icon name={isPlayerConfirmed(selectedPlayerForRole) ? "user-x" : "user-check"} size={18} />
+                                                    {isPlayerConfirmed(selectedPlayerForRole) ? 'Declarar Ausência' : 'Confirmar Presença'}
+                                                </button>
+                                            )}
+                                            
+                                            <button 
+                                                onClick={() => {
+                                                    setShowRoleModal(false);
+                                                    setSelectedPlayerForRole(null);
+                                                    setRoleActionStep('choice');
+                                                    setAdminPasswordInput('');
+                                                    setNewRolePassword('');
+                                                }}
+                                                className="w-full py-3 rounded-xl font-bold text-zinc-400 hover:text-zinc-600 transition-colors"
+                                            >
+                                                Cancelar
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {roleActionStep === 'password' && (
+                                        <div className="space-y-4 mt-4">
+                                            <p className="text-sm text-zinc-500">Ação restrita. Digite a senha da Comissão para prosseguir.</p>
+                                            <input 
+                                                type="password"
+                                                value={adminPasswordInput}
+                                                onChange={(e) => setAdminPasswordInput(e.target.value)}
+                                                placeholder="Senha da Comissão"
+                                                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-center"
+                                                onKeyDown={(e) => e.key === 'Enter' && handleRoleAction()}
+                                            />
+                                            <div className="flex gap-3">
+                                                <button onClick={() => {
+                                                    setRoleActionStep('choice');
+                                                    setAdminPasswordInput('');
+                                                }} className="flex-1 py-3 font-bold text-zinc-400">Voltar</button>
+                                                <button onClick={handleRoleAction} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold">Confirmar</button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {roleActionStep === 'config' && (
+                                        <div className="space-y-4 mt-4">
+                                            <p className="text-sm text-zinc-500">Defina uma senha de acesso para {selectedPlayerForRole.name}.</p>
                                             <input 
                                                 type="password"
                                                 value={newRolePassword}
                                                 onChange={(e) => setNewRolePassword(e.target.value)}
-                                                placeholder="Digite a senha do membro"
+                                                placeholder="Nova senha do membro"
                                                 className="w-full bg-zinc-50 border border-zinc-200 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                                             />
+                                            <div className="flex gap-3">
+                                                <button onClick={() => {
+                                                    setRoleActionStep('choice');
+                                                    setNewRolePassword('');
+                                                }} className="flex-1 py-3 font-bold text-zinc-400">Cancelar</button>
+                                                <button onClick={assignCommissionRole} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-bold">Salvar</button>
+                                            </div>
                                         </div>
                                     )}
-
-                                    <div className="flex gap-3">
-                                        <button 
-                                            onClick={() => {
-                                                setShowRoleModal(false);
-                                                setSelectedPlayerForRole(null);
-                                                setNewRolePassword('');
-                                            }}
-                                            className="flex-1 py-3 rounded-xl font-bold text-zinc-500 bg-zinc-100 hover:bg-zinc-200 transition-colors"
-                                        >
-                                            Cancelar
-                                        </button>
-                                        <button 
-                                            onClick={selectedPlayerForRole.role === 'commission' ? removeCommissionRole : assignCommissionRole}
-                                            className={`flex-1 py-3 rounded-xl font-bold text-white transition-colors ${selectedPlayerForRole.role === 'commission' ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                                        >
-                                            {selectedPlayerForRole.role === 'commission' ? 'Remover' : 'Confirmar'}
-                                        </button>
-                                    </div>
                                 </div>
                             </motion.div>
                         </div>
