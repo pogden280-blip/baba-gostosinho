@@ -13,6 +13,8 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Framer Motion -->
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -39,6 +41,7 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+        const motion = (window.Motion && window.Motion.motion) || (window.framerMotion && window.framerMotion.motion) || { div: 'div' };
 
         // Verificação de dependências
         if (!window.lucide || !window.React || !window.ReactDOM) {
@@ -113,6 +116,12 @@
             const [isSavingSettings, setIsSavingSettings] = useState(false);
             const [filterStartDate, setFilterStartDate] = useState('');
             const [filterEndDate, setFilterEndDate] = useState('');
+            
+            // Role states
+            const [showRoleModal, setShowRoleModal] = useState(false);
+            const [selectedPlayerForRole, setSelectedPlayerForRole] = useState(null);
+            const [newRolePassword, setNewRolePassword] = useState('');
+            const longPressTimer = useRef(null);
 
             // Match States
             const [teams, setTeams] = useState([]); // Array of { name: 'Time 1', players: [], score: 0 }
@@ -270,9 +279,14 @@
 
             const handleAdminAuth = () => {
                 const authorizedPasswords = ["Dan2620", "Davi2168"];
-                if (authorizedPasswords.includes(passwordInput)) {
-                    setCurrentUser(passwordInput);
-                    localStorage.setItem('futamigos_current_user', passwordInput);
+                
+                // Check dynamic commission members
+                const commissionMember = players.find(p => p.role === 'commission' && p.password === passwordInput);
+                
+                if (authorizedPasswords.includes(passwordInput) || commissionMember) {
+                    const user = commissionMember ? commissionMember.name : passwordInput;
+                    setCurrentUser(user);
+                    localStorage.setItem('futamigos_current_user', user);
                     setIsAdminMode(true);
                     setIsViewMode(false);
                     setShowPasswordModal(false);
@@ -281,6 +295,56 @@
                 } else {
                     alert("Senha incorreta! Acesso negado.");
                 }
+            };
+
+            const handleLongPressStart = (player) => {
+                longPressTimer.current = setTimeout(() => {
+                    setSelectedPlayerForRole(player);
+                    setShowRoleModal(true);
+                }, 800); // 800ms for long press
+            };
+
+            const handleLongPressEnd = () => {
+                if (longPressTimer.current) {
+                    clearTimeout(longPressTimer.current);
+                }
+            };
+
+            const assignCommissionRole = () => {
+                if (!newRolePassword.trim()) {
+                    alert("Por favor, defina uma senha!");
+                    return;
+                }
+
+                const updatedPlayers = players.map(p => {
+                    if (p.id === selectedPlayerForRole.id) {
+                        return { ...p, role: 'commission', password: newRolePassword.trim() };
+                    }
+                    return p;
+                });
+
+                setPlayers(updatedPlayers);
+                saveData(updatedPlayers, finances, undefined, matchHistory);
+                setShowRoleModal(false);
+                setSelectedPlayerForRole(null);
+                setNewRolePassword('');
+                alert(`${selectedPlayerForRole.name} agora faz parte da Comissão!`);
+            };
+
+            const removeCommissionRole = () => {
+                const updatedPlayers = players.map(p => {
+                    if (p.id === selectedPlayerForRole.id) {
+                        const { role, password, ...rest } = p;
+                        return rest;
+                    }
+                    return p;
+                });
+
+                setPlayers(updatedPlayers);
+                saveData(updatedPlayers, finances, undefined, matchHistory);
+                setShowRoleModal(false);
+                setSelectedPlayerForRole(null);
+                alert(`Cargo de Comissão removido de ${selectedPlayerForRole.name}.`);
             };
 
             const addPlayer = () => {
@@ -413,9 +477,15 @@
                 nextSaturday.setDate(today.getDate() + daysUntilSaturday);
                 const dateStr = nextSaturday.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
                 
-                const activePlayers = isEmpty ? [] : players.filter(p => !p.isGoalkeeper && !p.isPunished);
-                const goalkeepers = isEmpty ? [] : players.filter(p => p.isGoalkeeper && !p.isPunished);
-                const punished = isEmpty ? [] : players.filter(p => p.isPunished);
+                const activePlayers = isEmpty 
+                    ? players.filter(p => !p.isGoalkeeper && (p.type === 'mensalista' || p.role === 'commission' || p.isPunished))
+                    : players.filter(p => confirmedPlayerIds.includes(p.id) && !p.isGoalkeeper && !p.isPunished);
+                
+                const goalkeepers = isEmpty 
+                    ? players.filter(p => p.isGoalkeeper && p.role === 'commission')
+                    : players.filter(p => confirmedPlayerIds.includes(p.id) && p.isGoalkeeper && !p.isPunished);
+                
+                const punished = players.filter(p => p.isPunished);
 
                 let listText = `*⚽💨💨🏃🏻LISTA DO BABA GOSTOSINHO*\n\n`;
                 listText += ` *${dateStr} - Sábado* ⚽🏆\n`;
@@ -453,7 +523,8 @@
                 listText += `*OBS: LIMITE MÁXIMO DE 4 TIMES*\n`;
                 listText += `*_⚠️🤑PAGAMENTO ANTES DE COMEÇAR, VAI SER FEITO A CHAMADA QUEM NÃO PAGOU ANTES NÃO JOGA🤑⚠️_*\n\n`;
                 listText += `*🥵🍶🥛LEVEM SUAS GARRAFAS DE ÁGUA⚠️*\n\n`;
-               
+                listText += `segue o grupo:\n\n`;
+                listText += `https://chat.whatsapp.com/HmhI6eAXcXy4cBAIZzEnl8?mode=hqctswi`;
 
                 if (isEmpty) {
                     window.open(`https://wa.me/?text=${encodeURIComponent(listText)}`, '_blank');
@@ -1135,24 +1206,38 @@
                                                     </section>
                                                 )}
                                                 <div className="space-y-2">
-                                                    {players.map(p => (
+                                                    {[...players].sort((a, b) => {
+                                                        if (a.role === 'commission' && b.role !== 'commission') return -1;
+                                                        if (a.role !== 'commission' && b.role === 'commission') return 1;
+                                                        return a.name.localeCompare(b.name);
+                                                    }).map(p => (
                                                         <div key={p.id} className="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between">
                                                             <div className="flex items-center gap-3">
                                                                 <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-xs font-bold text-zinc-500">
                                                                     {p.name.charAt(0).toUpperCase()}
                                                                 </div>
                                                                 <div>
-                                                                    <p className="font-semibold text-zinc-800 flex items-center">
+                                                                    <p 
+                                                                        className="font-semibold text-zinc-800 flex items-center cursor-pointer select-none"
+                                                                        onMouseDown={() => handleLongPressStart(p)}
+                                                                        onMouseUp={handleLongPressEnd}
+                                                                        onMouseLeave={handleLongPressEnd}
+                                                                        onTouchStart={() => handleLongPressStart(p)}
+                                                                        onTouchEnd={handleLongPressEnd}
+                                                                    >
                                                                         {p.name}{getAuthorTag(p.author)}
+                                                                        {p.role === 'commission' && <span className="ml-2 text-[8px] bg-indigo-100 text-indigo-600 px-1 rounded">COMISSÃO</span>}
                                                                         {p.isGoalkeeper && <span className="ml-2 text-[8px] bg-amber-100 text-amber-600 px-1 rounded">GK</span>}
                                                                         {p.isPunished && (
                                                                             <span className="ml-2 text-[8px] bg-red-100 text-red-600 px-1 rounded flex items-center gap-1">
                                                                                 PUNIDO ({p.punishmentCount})
                                                                             </span>
                                                                         )}
-                                                                        <span className={`ml-2 text-[8px] px-1 rounded cursor-pointer ${p.type === 'mensalista' ? 'bg-emerald-100 text-emerald-600' : 'bg-zinc-100 text-zinc-500'}`} onClick={() => updatePlayer(p.id, 'type', p.type === 'mensalista' ? 'diarista' : 'mensalista')}>
-                                                                            {p.type?.toUpperCase() || 'DIARISTA'}
-                                                                        </span>
+                                                                        {p.role !== 'commission' && (
+                                                                            <span className={`ml-2 text-[8px] px-1 rounded cursor-pointer ${p.type === 'mensalista' ? 'bg-emerald-100 text-emerald-600' : 'bg-zinc-100 text-zinc-500'}`} onClick={() => updatePlayer(p.id, 'type', p.type === 'mensalista' ? 'diarista' : 'mensalista')}>
+                                                                                {p.type?.toUpperCase() || 'DIARISTA'}
+                                                                            </span>
+                                                                        )}
                                                                         
                                                                         {/* Botões de Punição */}
                                                                         <div className="ml-auto flex items-center gap-1">
@@ -1190,19 +1275,23 @@
                                                                     </p>
                                                                     <div className="flex flex-col gap-1 mt-1">
                                                                         <div className="flex items-center gap-2">
-                                                                            <button 
-                                                                                onClick={() => updatePlayer(p.id, 'paymentStatus', p.paymentStatus === 'pago' ? (p.type === 'mensalista' ? 'não' : 'devendo') : 'pago')}
-                                                                                className={`px-2 py-0.5 rounded text-[8px] font-bold border transition-all ${p.paymentStatus === 'pago' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-red-500 border-red-500 text-white'}`}
-                                                                            >
-                                                                                {p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
-                                                                            </button>
-                                                                            {p.type === 'mensalista' && (
-                                                                                <input 
-                                                                                    type="date" 
-                                                                                    value={p.dueDate || ''} 
-                                                                                    onChange={(e) => updatePlayer(p.id, 'dueDate', e.target.value)}
-                                                                                    className="text-[8px] border border-zinc-200 rounded px-1 focus:outline-none"
-                                                                                />
+                                                                            {p.role !== 'commission' && (
+                                                                                <>
+                                                                                    <button 
+                                                                                        onClick={() => updatePlayer(p.id, 'paymentStatus', p.paymentStatus === 'pago' ? (p.type === 'mensalista' ? 'não' : 'devendo') : 'pago')}
+                                                                                        className={`px-2 py-0.5 rounded text-[8px] font-bold border transition-all ${p.paymentStatus === 'pago' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-red-500 border-red-500 text-white'}`}
+                                                                                    >
+                                                                                        {p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
+                                                                                    </button>
+                                                                                    {p.type === 'mensalista' && (
+                                                                                        <input 
+                                                                                            type="date" 
+                                                                                            value={p.dueDate || ''} 
+                                                                                            onChange={(e) => updatePlayer(p.id, 'dueDate', e.target.value)}
+                                                                                            className="text-[8px] border border-zinc-200 rounded px-1 focus:outline-none"
+                                                                                        />
+                                                                                    )}
+                                                                                </>
                                                                             )}
                                                                             {p.totalBabas > 0 && (
                                                                                 <span className={`text-[8px] font-bold px-1 rounded ${
@@ -1604,29 +1693,16 @@
                                             </div>
                                             
                                             <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto pr-1 custom-scrollbar">
-                                                {players.filter(p => !p.isPunished).map(p => {
-                                                    const isConfirmed = confirmedPlayerIds.includes(p.id);
+                                                {players.filter(p => !p.isPunished && confirmedPlayerIds.includes(p.id)).map(p => {
+                                                    const isConfirmed = true;
                                                     return (
-                                                        <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isConfirmed ? 'bg-emerald-50/50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 opacity-70'}`}>
+                                                        <div key={p.id} className="flex items-center justify-between p-3 rounded-xl border transition-all bg-emerald-50/50 border-emerald-200">
                                                             <div className="flex items-center gap-3">
-                                                                <button 
-                                                                    onClick={() => {
-                                                                        if (!isConfirmed && p.paymentStatus !== 'pago' && !p.isGoalkeeper) {
-                                                                            alert('O jogador deve estar com o pagamento em dia para ser confirmado!');
-                                                                            return;
-                                                                        }
-                                                                        const newConfirmed = isConfirmed 
-                                                                            ? confirmedPlayerIds.filter(id => id !== p.id)
-                                                                            : [...confirmedPlayerIds, p.id];
-                                                                        setConfirmedPlayerIds(newConfirmed);
-                                                                        saveData(players, finances, undefined, undefined, undefined, undefined, newConfirmed);
-                                                                    }}
-                                                                    className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${isConfirmed ? 'bg-emerald-500 text-white' : 'bg-zinc-200 text-transparent'}`}
-                                                                >
+                                                                <div className="w-5 h-5 rounded-md flex items-center justify-center bg-emerald-500 text-white">
                                                                     <Icon name="check" size={12} />
-                                                                </button>
+                                                                </div>
                                                                 <div>
-                                                                    <p className={`text-xs font-bold ${isConfirmed ? 'text-zinc-900' : 'text-zinc-500'}`}>{p.name}</p>
+                                                                    <p className="text-xs font-bold text-zinc-900">{p.name}</p>
                                                                     <div className="flex items-center gap-2 mt-0.5">
                                                                         <span className={`text-[8px] font-black uppercase ${p.type === 'mensalista' ? 'text-emerald-600' : 'text-zinc-400'}`}>
                                                                             {p.type === 'mensalista' ? 'Mensalista' : 'Diarista'}
@@ -1897,6 +1973,59 @@
                                 </button>
                             </div>
                         </nav>
+                    )}
+
+                    {/* Modal de Cargo de Comissão */}
+                    {showRoleModal && selectedPlayerForRole && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                            <motion.div 
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+                            >
+                                <div className="p-6">
+                                    <h3 className="text-xl font-bold text-zinc-800 mb-2">Definir Cargo</h3>
+                                    <p className="text-zinc-500 text-sm mb-6">
+                                        {selectedPlayerForRole.role === 'commission' 
+                                            ? `Deseja remover o cargo de Comissão de ${selectedPlayerForRole.name}?`
+                                            : `Deseja dar cargo de Comissão a ${selectedPlayerForRole.name}? Ele precisará de uma senha para acessar.`
+                                        }
+                                    </p>
+
+                                    {selectedPlayerForRole.role !== 'commission' && (
+                                        <div className="mb-6">
+                                            <label className="block text-xs font-bold text-zinc-400 uppercase mb-2">Definir Senha</label>
+                                            <input 
+                                                type="password"
+                                                value={newRolePassword}
+                                                onChange={(e) => setNewRolePassword(e.target.value)}
+                                                placeholder="Digite a senha do membro"
+                                                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div className="flex gap-3">
+                                        <button 
+                                            onClick={() => {
+                                                setShowRoleModal(false);
+                                                setSelectedPlayerForRole(null);
+                                                setNewRolePassword('');
+                                            }}
+                                            className="flex-1 py-3 rounded-xl font-bold text-zinc-500 bg-zinc-100 hover:bg-zinc-200 transition-colors"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            onClick={selectedPlayerForRole.role === 'commission' ? removeCommissionRole : assignCommissionRole}
+                                            className={`flex-1 py-3 rounded-xl font-bold text-white transition-colors ${selectedPlayerForRole.role === 'commission' ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                                        >
+                                            {selectedPlayerForRole.role === 'commission' ? 'Remover' : 'Confirmar'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
                     )}
 
                     {/* Password Modal */}
