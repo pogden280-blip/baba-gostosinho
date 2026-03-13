@@ -109,10 +109,11 @@
             const [isGoalkeeper, setIsGoalkeeper] = useState(false);
             const [isPunished, setIsPunished] = useState(false);
             const [newPlayerPunishmentCount, setNewPlayerPunishmentCount] = useState(1);
+            const [newPlayerPunishmentFine, setNewPlayerPunishmentFine] = useState(0);
             const [financeDesc, setFinanceDesc] = useState('');
             const [financeAmount, setFinanceAmount] = useState('');
             const [financeType, setFinanceType] = useState('income');
-            const [mensalidadeValue, setMensalidadeValue] = useState(30);
+            const [mensalidadeValue, setMensalidadeValue] = useState(26);
             const [diariaValue, setDiariaValue] = useState(8);
             const [isSavingSettings, setIsSavingSettings] = useState(false);
             const [filterStartDate, setFilterStartDate] = useState('');
@@ -126,6 +127,10 @@
             const [adminPasswordInput, setAdminPasswordInput] = useState('');
             const longPressTimer = useRef(null);
 
+            const [accessHistory, setAccessHistory] = useState([]);
+            const [showEditPlayerModal, setShowEditPlayerModal] = useState(false);
+            const [editingPlayer, setEditingPlayer] = useState(null);
+            
             // Match States
             const [teams, setTeams] = useState([]); // Array of { name: 'Time 1', players: [], score: 0 }
             const [currentMatchTeams, setCurrentMatchTeams] = useState([0, 1]); // Indices of teams in match
@@ -154,7 +159,8 @@
                             const rawGuests = data.record.guests || [];
                             const rawConfirmed = data.record.confirmedPlayerIds || [];
                             const rawAbsent = data.record.absentCommissionIds || [];
-                            const rawMensalidade = data.record.mensalidadeValue || 30;
+                            const rawAccessHistory = data.record.accessHistory || [];
+                            const rawMensalidade = data.record.mensalidadeValue || 26;
                             const rawDiaria = data.record.diariaValue || 8;
                             
                             // Check for expirations
@@ -178,6 +184,7 @@
                             setMatchHistory(rawHistory);
                             setGuests(rawGuests);
                             setAbsentCommissionIds(rawAbsent);
+                            setAccessHistory(rawAccessHistory);
                             setMensalidadeValue(rawMensalidade);
                             setDiariaValue(rawDiaria);
                             
@@ -223,7 +230,7 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds) => {
+            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory) => {
                 try {
                     const currentDraw = lastDraw !== undefined ? lastDraw : (teams.length > 0 ? { teams, currentMatchTeams } : null);
                     const historyToSave = newHistory !== undefined ? newHistory : matchHistory;
@@ -233,6 +240,7 @@
                     const mensalidadeToSave = newMensalidade !== undefined ? newMensalidade : mensalidadeValue;
                     const diariaToSave = newDiaria !== undefined ? newDiaria : diariaValue;
                     const absentToSave = newAbsentIds !== undefined ? newAbsentIds : absentCommissionIds;
+                    const accessHistoryToSave = newAccessHistory !== undefined ? newAccessHistory : accessHistory;
                     
                     const response = await fetch(API_URL, {
                         method: 'PUT',
@@ -250,7 +258,8 @@
                             confirmedPlayerIds: confirmedToSave,
                             mensalidadeValue: mensalidadeToSave,
                             diariaValue: diariaToSave,
-                            absentCommissionIds: absentToSave
+                            absentCommissionIds: absentToSave,
+                            accessHistory: accessHistoryToSave
                         })
                     });
 
@@ -294,11 +303,23 @@
                     const user = commissionMember ? commissionMember.name : passwordInput;
                     setCurrentUser(user);
                     localStorage.setItem('futamigos_current_user', user);
+                    
+                    // Update access history
+                    const newAccess = {
+                        user: user,
+                        time: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    };
+                    const updatedHistory = [newAccess, ...accessHistory].slice(0, 3);
+                    setAccessHistory(updatedHistory);
+                    
                     setIsAdminMode(true);
                     setIsViewMode(false);
                     setShowPasswordModal(false);
                     setCurrentTab('home');
                     setPasswordInput('');
+                    
+                    // Save with new history
+                    saveData(players, finances, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, updatedHistory);
                 } else {
                     alert("Senha incorreta! Acesso negado.");
                 }
@@ -404,6 +425,23 @@
                 alert(`Cargo de Comissão removido de ${selectedPlayerForRole.name}.`);
             };
 
+            const updatePlayerFull = () => {
+                if (!editingPlayer || !editingPlayer.name.trim()) return;
+                
+                const updatedPlayers = players.map(p => {
+                    if (p.id === editingPlayer.id) {
+                        return { ...editingPlayer };
+                    }
+                    return p;
+                });
+                
+                setPlayers(updatedPlayers);
+                saveData(updatedPlayers, finances, undefined, matchHistory);
+                setShowEditPlayerModal(false);
+                setEditingPlayer(null);
+                alert("Jogador atualizado com sucesso!");
+            };
+
             const addPlayer = () => {
                 if (!newPlayerName.trim()) return;
                 const newPlayer = {
@@ -417,6 +455,8 @@
                     isGoalkeeper: isGoalkeeper,
                     isPunished: isPunished,
                     punishmentCount: isPunished ? newPlayerPunishmentCount : 0,
+                    punishmentFine: isPunished ? newPlayerPunishmentFine : 0,
+                    punishmentFinePaid: isPunished && newPlayerPunishmentFine > 0 ? false : true,
                     presences: 0,
                     totalBabas: 0
                 };
@@ -426,7 +466,7 @@
                 let newConfirmed = [...confirmedPlayerIds];
                 let newFinances = [...finances];
 
-                if (newPlayer.paymentStatus === 'pago') {
+                if (newPlayer.paymentStatus === 'pago' && !newPlayer.isPunished) {
                     newConfirmed.push(newPlayer.id);
                     setConfirmedPlayerIds(newConfirmed);
 
@@ -453,6 +493,7 @@
                 setIsGoalkeeper(false);
                 setIsPunished(false);
                 setNewPlayerPunishmentCount(1);
+                setNewPlayerPunishmentFine(0);
                 setShowAddPlayerForm(false);
             };
 
@@ -490,7 +531,7 @@
                                     });
                                 }
                                 
-                                if (!newConfirmedIds.includes(id)) {
+                                if (!newConfirmedIds.includes(id) && !p.isPunished) {
                                     newConfirmedIds.push(id);
                                 }
                             } else {
@@ -544,24 +585,34 @@
                 
                 const punished = players.filter(p => p.isPunished);
 
+                const getPlayerNameWithCheck = (p) => {
+                    if (!p) return '';
+                    const isGuaranteed = (p.type === 'mensalista' || p.role === 'commission') && !p.isGoalkeeper;
+                    return `${p.name}${isGuaranteed ? ' ✅' : ''}`;
+                };
+
                 let listText = `*⚽💨💨🏃🏻LISTA DO BABA GOSTOSINHO*\n\n`;
-                listText += ` *${dateStr} - Sábado* ⚽🏆\n`;
-                listText += `*Horário - 15:30 horas da tarde*\n`;
-                listText += ` *Valor: ${diariaValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}* \n`;
-                listText += ` *Chave PIX : 7799930-4025*\n`;
-                listText += `*Esmael de Souza Silva*\n`;
-                listText += `⚠️ *OBRIGATÓRIO COLETES AZUL E VERMELHO ⚠️*\n\n`;
+                listText += `*${dateStr} - Sábado* ⚽🏆 15:30 da tarde*\n\n`;
+                listText += `*CHAVE PIX:*\n\n`;
+                listText += `069.237.535-03\n\n`;
+                listText += `*Davi da Silva Araújo*\n`;
+                listText += `*Valor: 8,00R$*\n`;
+                listText += `*Mensal: 26,00R$*\n\n`;
+                listText += `*por o nome na lista e efetuar o pagamento ate sexta 20:00*\n`;
+                listText += `Jogador sem pagamento é bloqueado pelo app automaticamente e não entra no sorteio.*\n\n`;
 
                 for (let i = 1; i <= 24; i++) {
                     const p = activePlayers[i-1];
-                    const num = i === 13 ? '🇧🇷' : i;
-                    listText += `${num}- ${p ? p.name : ''}\n`;
+                    let num = i;
+                    if (i === 13) num = '🇧🇷';
+                    if (i === 24) num = '🏳️🌈';
+                    listText += `${num}- ${getPlayerNameWithCheck(p)}\n`;
                 }
 
                 listText += `\nSuplentes:\n`;
                 for (let i = 1; i <= 4; i++) {
                     const p = activePlayers[i + 23];
-                    listText += `${i}- ${p ? p.name : ''}\n`;
+                    listText += `${i}- ${getPlayerNameWithCheck(p)}\n`;
                 }
 
                 listText += `\n*Goleiros*\n\n`;
@@ -570,18 +621,14 @@
                     listText += `${i}- ${p ? p.name : ''}\n`;
                 }
 
-                listText += `*LISTA DE PUNIDOS - R$ 15,00*\n`;
+                listText += `\n*LISTA DE PUNIDOS - R$ 15,00*\n`;
                 for (let i = 1; i <= 3; i++) {
                     const p = punished[i-1];
                     listText += `${i}- ${p ? `${p.name} (${p.punishmentCount} babas)` : ''}\n`;
                 }
 
-                listText += `\n*OBS:* \n\n`;
-                listText += `*OBS: LIMITE MÁXIMO DE 4 TIMES*\n`;
-                listText += `*_⚠️🤑PAGAMENTO ANTES DE COMEÇAR, VAI SER FEITO A CHAMADA QUEM NÃO PAGOU ANTES NÃO JOGA🤑⚠️_*\n\n`;
-                listText += `*🥵🍶🥛LEVEM SUAS GARRAFAS DE ÁGUA⚠️*\n\n`;
-                listText += `segue o grupo:\n\n`;
-                listText += `https://chat.whatsapp.com/HmhI6eAXcXy4cBAIZzEnl8?mode=hqctswi`;
+                listText += `\n*OBS: LIMITE MÁXIMO DE 4 TIMES*\n`;
+                listText += `⚠️ *OBRIGATÓRIO COLETES AZUL E VERMELHO ⚠️*`;
 
                 if (isEmpty) {
                     window.open(`https://wa.me/?text=${encodeURIComponent(listText)}`, '_blank');
@@ -840,9 +887,13 @@
                     // Decrementar punição
                     if (updated.isPunished && updated.punishmentCount > 0) {
                         updated.punishmentCount -= 1;
-                        if (updated.punishmentCount === 0) {
+                        // Só libera se cumpriu os babas E pagou a multa
+                        if (updated.punishmentCount === 0 && (updated.punishmentFinePaid !== false)) {
                             updated.isPunished = false;
                         }
+                    } else if (updated.isPunished && updated.punishmentCount <= 0 && (updated.punishmentFinePaid !== false)) {
+                        // Caso já tenha cumprido os babas mas pagou a multa agora
+                        updated.isPunished = false;
                     }
 
                     if (updated.type === 'diarista') {
@@ -1244,15 +1295,27 @@
                                                             </div>
 
                                                             {isPunished && (
-                                                                <div className="flex items-center justify-between bg-red-50 p-3 rounded-xl border border-red-100">
-                                                                    <span className="text-xs font-bold text-red-600 uppercase">Babas de fora:</span>
-                                                                    <input 
-                                                                        type="number" 
-                                                                        min="1"
-                                                                        value={newPlayerPunishmentCount}
-                                                                        onChange={(e) => setNewPlayerPunishmentCount(parseInt(e.target.value) || 1)}
-                                                                        className="w-16 px-2 py-1 text-xs rounded border border-red-200 focus:outline-none text-center font-bold"
-                                                                    />
+                                                                <div className="space-y-3 bg-red-50 p-3 rounded-xl border border-red-100">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-xs font-bold text-red-600 uppercase">Babas de fora:</span>
+                                                                        <input 
+                                                                            type="number" 
+                                                                            min="1"
+                                                                            value={newPlayerPunishmentCount}
+                                                                            onChange={(e) => setNewPlayerPunishmentCount(parseInt(e.target.value) || 1)}
+                                                                            className="w-16 px-2 py-1 text-xs rounded border border-red-200 focus:outline-none text-center font-bold"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-xs font-bold text-red-600 uppercase">Multa (R$):</span>
+                                                                        <input 
+                                                                            type="number" 
+                                                                            min="0"
+                                                                            value={newPlayerPunishmentFine}
+                                                                            onChange={(e) => setNewPlayerPunishmentFine(parseFloat(e.target.value) || 0)}
+                                                                            className="w-16 px-2 py-1 text-xs rounded border border-red-200 focus:outline-none text-center font-bold"
+                                                                        />
+                                                                    </div>
                                                                 </div>
                                                             )}
                                                             <div className="flex gap-2">
@@ -1268,21 +1331,22 @@
                                                         if (a.role !== 'commission' && b.role === 'commission') return 1;
                                                         return a.name.localeCompare(b.name);
                                                     }).map(p => (
-                                                        <div key={p.id} className="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between">
+                                                        <div 
+                                                            key={p.id} 
+                                                            className="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between cursor-pointer select-none active:bg-zinc-50 transition-colors"
+                                                            onMouseDown={() => handleLongPressStart(p)}
+                                                            onMouseUp={handleLongPressEnd}
+                                                            onMouseLeave={handleLongPressEnd}
+                                                            onTouchStart={() => handleLongPressStart(p)}
+                                                            onTouchEnd={handleLongPressEnd}
+                                                        >
                                                             <div className="flex items-center gap-3">
                                                                 <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-xs font-bold text-zinc-500">
                                                                     {p.name.charAt(0).toUpperCase()}
                                                                 </div>
                                                                 <div>
-                                                                    <p 
-                                                                        className="font-semibold text-zinc-800 flex items-center cursor-pointer select-none"
-                                                                        onMouseDown={() => handleLongPressStart(p)}
-                                                                        onMouseUp={handleLongPressEnd}
-                                                                        onMouseLeave={handleLongPressEnd}
-                                                                        onTouchStart={() => handleLongPressStart(p)}
-                                                                        onTouchEnd={handleLongPressEnd}
-                                                                    >
-                                                                        {p.name}{getAuthorTag(p.author)}
+                                                                    <p className="font-semibold text-zinc-800 flex items-center">
+                                                                        {p.name}{(p.type === 'mensalista' || p.role === 'commission') && !p.isGoalkeeper && ' ✅'}
                                                                         {p.role === 'commission' && <span className="ml-2 text-[8px] bg-indigo-100 text-indigo-600 px-1 rounded">COMISSÃO</span>}
                                                                         {p.isGoalkeeper && <span className="ml-2 text-[8px] bg-amber-100 text-amber-600 px-1 rounded">GK</span>}
                                                                         {p.isPunished && (
@@ -1291,42 +1355,127 @@
                                                                             </span>
                                                                         )}
                                                                         {p.role !== 'commission' && (
-                                                                            <span className={`ml-2 text-[8px] px-1 rounded cursor-pointer ${p.type === 'mensalista' ? 'bg-emerald-100 text-emerald-600' : 'bg-zinc-100 text-zinc-500'}`} onClick={() => updatePlayer(p.id, 'type', p.type === 'mensalista' ? 'diarista' : 'mensalista')}>
+                                                                            <span 
+                                                                                className={`ml-2 text-[8px] px-1 rounded cursor-pointer ${p.type === 'mensalista' ? 'bg-emerald-100 text-emerald-600' : 'bg-zinc-100 text-zinc-500'}`} 
+                                                                                onClick={(e) => { e.stopPropagation(); updatePlayer(p.id, 'type', p.type === 'mensalista' ? 'diarista' : 'mensalista'); }}
+                                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                                onTouchStart={(e) => e.stopPropagation()}
+                                                                            >
                                                                                 {p.type?.toUpperCase() || 'DIARISTA'}
                                                                             </span>
                                                                         )}
+                                                                        <div className="ml-2 flex items-center gap-0.5">
+                                                                            {[...Array(p.level || 3)].map((_, i) => (
+                                                                                <Icon key={i} name="star" size={8} className="text-amber-400" fill="currentColor" />
+                                                                            ))}
+                                                                        </div>
                                                                         
                                                                         {/* Botões de Punição */}
                                                                         <div className="ml-auto flex items-center gap-1">
                                                                             {!p.isPunished ? (
                                                                                 <button 
-                                                                                    onClick={() => {
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
                                                                                         const count = prompt('Quantos babas de punição?', '1');
-                                                                                        if (count && !isNaN(count)) {
-                                                                                            const updatedPlayers = players.map(player => 
-                                                                                                player.id === p.id ? { ...player, isPunished: true, punishmentCount: parseInt(count) } : player
-                                                                                            );
-                                                                                            setPlayers(updatedPlayers);
-                                                                                            saveData(updatedPlayers, finances, undefined, matchHistory);
-                                                                                        }
+                                                                                        if (count === null) return;
+                                                                                        const fine = prompt('Valor da multa (R$)?', '0');
+                                                                                        if (fine === null) return;
+
+                                                                                        const countNum = parseInt(count) || 1;
+                                                                                        const fineNum = parseFloat(fine) || 0;
+
+                                                                                        const updatedPlayers = players.map(player => 
+                                                                                            player.id === p.id ? { 
+                                                                                                ...player, 
+                                                                                                isPunished: true, 
+                                                                                                punishmentCount: countNum,
+                                                                                                punishmentFine: fineNum,
+                                                                                                punishmentFinePaid: fineNum > 0 ? false : true
+                                                                                            } : player
+                                                                                        );
+                                                                                        const newConfirmed = confirmedPlayerIds.filter(id => id !== p.id);
+                                                                                        setPlayers(updatedPlayers);
+                                                                                        setConfirmedPlayerIds(newConfirmed);
+                                                                                        saveData(updatedPlayers, finances, undefined, matchHistory, undefined, undefined, newConfirmed);
                                                                                     }}
+                                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                                    onTouchStart={(e) => e.stopPropagation()}
                                                                                     className="text-[8px] font-bold text-red-500 hover:bg-red-50 px-1.5 py-0.5 rounded border border-red-100"
                                                                                 >
                                                                                     PUNIR
                                                                                 </button>
                                                                             ) : (
-                                                                                <button 
-                                                                                    onClick={() => {
-                                                                                        const updatedPlayers = players.map(player => 
-                                                                                            player.id === p.id ? { ...player, isPunished: false, punishmentCount: 0 } : player
-                                                                                        );
-                                                                                        setPlayers(updatedPlayers);
-                                                                                        saveData(updatedPlayers, finances, undefined, matchHistory);
-                                                                                    }}
-                                                                                    className="text-[8px] font-bold text-emerald-500 hover:bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100"
-                                                                                >
-                                                                                    LIBERAR
-                                                                                </button>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {p.punishmentFine > 0 && !p.punishmentFinePaid && (
+                                                                                        <button 
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                if (confirm(`Confirmar pagamento da multa de R$ ${p.punishmentFine} para ${p.name}?`)) {
+                                                                                                    const newFinances = [...finances, {
+                                                                                                        id: `f-${Date.now()}-${p.id}`,
+                                                                                                        description: `Multa paga: ${p.name}`,
+                                                                                                        amount: p.punishmentFine,
+                                                                                                        type: 'income',
+                                                                                                        date: new Date().toLocaleDateString('pt-BR'),
+                                                                                                        author: currentUser
+                                                                                                    }];
+                                                                                                    
+                                                                                                    const updatedPlayers = players.map(player => {
+                                                                                                        if (player.id === p.id) {
+                                                                                                            const updated = { ...player, punishmentFinePaid: true };
+                                                                                                            // Se já cumpriu os babas, libera
+                                                                                                            if (updated.punishmentCount <= 0) {
+                                                                                                                updated.isPunished = false;
+                                                                                                            }
+                                                                                                            return updated;
+                                                                                                        }
+                                                                                                        return player;
+                                                                                                    });
+
+                                                                                                    // Se liberou, verifica se volta pros confirmados
+                                                                                                    let newConfirmed = [...confirmedPlayerIds];
+                                                                                                    const isNowFree = updatedPlayers.find(up => up.id === p.id && !up.isPunished);
+                                                                                                    if (isNowFree && ((p.type === 'mensalista' && p.paymentStatus === 'pago') || p.role === 'commission') && !newConfirmed.includes(p.id)) {
+                                                                                                        newConfirmed.push(p.id);
+                                                                                                    }
+                                                                                                    
+                                                                                                    setPlayers(updatedPlayers);
+                                                                                                    setFinances(newFinances);
+                                                                                                    setConfirmedPlayerIds(newConfirmed);
+                                                                                                    saveData(updatedPlayers, newFinances, undefined, matchHistory, undefined, undefined, newConfirmed);
+                                                                                                }
+                                                                                            }}
+                                                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                                                            onTouchStart={(e) => e.stopPropagation()}
+                                                                                            className="text-[8px] font-bold text-amber-500 hover:bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100"
+                                                                                        >
+                                                                                            PAGAR MULTA (R$ {p.punishmentFine})
+                                                                                        </button>
+                                                                                    )}
+                                                                                    <button 
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            const updatedPlayers = players.map(player => 
+                                                                                                player.id === p.id ? { ...player, isPunished: false, punishmentCount: 0, punishmentFine: 0, punishmentFinePaid: true } : player
+                                                                                            );
+                                                                                            
+                                                                                            // Se for mensalista pago, volta pros confirmados
+                                                                                            let newConfirmed = [...confirmedPlayerIds];
+                                                                                            if (((p.type === 'mensalista' && p.paymentStatus === 'pago') || p.role === 'commission') && !newConfirmed.includes(p.id)) {
+                                                                                                newConfirmed.push(p.id);
+                                                                                            }
+                                                                                            
+                                                                                            setPlayers(updatedPlayers);
+                                                                                            setConfirmedPlayerIds(newConfirmed);
+                                                                                            saveData(updatedPlayers, finances, undefined, matchHistory, undefined, undefined, newConfirmed);
+                                                                                        }}
+                                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                                        onTouchStart={(e) => e.stopPropagation()}
+                                                                                        className="text-[8px] font-bold text-emerald-500 hover:bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100"
+                                                                                    >
+                                                                                        LIBERAR
+                                                                                    </button>
+                                                                                </div>
                                                                             )}
                                                                         </div>
                                                                     </p>
@@ -1335,7 +1484,9 @@
                                                                             {p.role !== 'commission' && (
                                                                                 <>
                                                                                     <button 
-                                                                                        onClick={() => updatePlayer(p.id, 'paymentStatus', p.paymentStatus === 'pago' ? (p.type === 'mensalista' ? 'não' : 'devendo') : 'pago')}
+                                                                                        onClick={(e) => { e.stopPropagation(); updatePlayer(p.id, 'paymentStatus', p.paymentStatus === 'pago' ? (p.type === 'mensalista' ? 'não' : 'devendo') : 'pago'); }}
+                                                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                                                        onTouchStart={(e) => e.stopPropagation()}
                                                                                         className={`px-2 py-0.5 rounded text-[8px] font-bold border transition-all ${p.paymentStatus === 'pago' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-red-500 border-red-500 text-white'}`}
                                                                                     >
                                                                                         {p.paymentStatus?.toUpperCase() || (p.type === 'mensalista' ? 'NÃO' : 'DEVENDO')}
@@ -1362,14 +1513,6 @@
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                            </div>
-                                                            <div className="flex gap-2">
-                                                                <button onClick={() => togglePlayerStatus(p.id, 'isGoalkeeper')} className={`p-2 rounded-lg ${p.isGoalkeeper ? 'text-amber-500 bg-amber-50' : 'text-zinc-300'}`}>
-                                                                    <Icon name="shield" size={18} />
-                                                                </button>
-                                                                <button onClick={() => removePlayer(p.id)} className="p-2 text-zinc-300 hover:text-red-500">
-                                                                    <Icon name="trash-2" size={18} />
-                                                                </button>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -1528,7 +1671,7 @@
                                                                                 onTouchStart={() => handleLongPressStart(p)}
                                                                                 onTouchEnd={handleLongPressEnd}
                                                                             >
-                                                                                {p.name}
+                                                                                {p.name}{(p.type === 'mensalista' || p.role === 'commission') && !p.isGoalkeeper && ' ✅'}
                                                                             </p>
                                                                             <div className="flex items-center gap-2 mt-0.5">
                                                                                 {p.role === 'commission' && (
@@ -1562,15 +1705,32 @@
                                                                     <div className="flex gap-1">
                                                                         {!isConfirmed && (
                                                                             <button 
-                                                                                onClick={() => {
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    const count = prompt('Quantos babas de punição?', '1');
+                                                                                    if (count === null) return;
+                                                                                    const fine = prompt('Valor da multa (R$)?', '0');
+                                                                                    if (fine === null) return;
+
+                                                                                    const countNum = parseInt(count) || 1;
+                                                                                    const fineNum = parseFloat(fine) || 0;
+
                                                                                     if (confirm(`Punir ${p.name} por falta sem aviso?`)) {
-                                                                                        const updatedPlayers = players.map(pl => pl.id === p.id ? {...pl, isPunished: true} : pl);
+                                                                                        const updatedPlayers = players.map(pl => pl.id === p.id ? {
+                                                                                            ...pl, 
+                                                                                            isPunished: true,
+                                                                                            punishmentCount: countNum,
+                                                                                            punishmentFine: fineNum,
+                                                                                            punishmentFinePaid: fineNum > 0 ? false : true
+                                                                                        } : pl);
                                                                                         setPlayers(updatedPlayers);
                                                                                         const newConfirmed = confirmedPlayerIds.filter(id => id !== p.id);
                                                                                         setConfirmedPlayerIds(newConfirmed);
                                                                                         saveData(updatedPlayers, finances, undefined, undefined, undefined, undefined, newConfirmed);
                                                                                     }
                                                                                 }}
+                                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                                onTouchStart={(e) => e.stopPropagation()}
                                                                                 className="p-2 rounded-lg text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-colors"
                                                                                 title="Punir por falta"
                                                                             >
@@ -1740,19 +1900,12 @@
                                             <div key={idx} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
                                                 <div className={`${idx % 2 === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} px-4 py-3 text-white flex justify-between items-center`}>
                                                     <h3 className="font-bold">{team.name}</h3>
-                                                    <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                                                        Média: {(team.players.reduce((acc, p) => acc + p.level, 0) / (team.players.length || 1)).toFixed(1)}
-                                                    </span>
                                                 </div>
                                                 <div className="p-4 space-y-2">
                                                     {team.players.map(p => (
                                                         <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
                                                             <span className="text-sm font-medium text-zinc-700">{p.name}</span>
-                                                            <div className="flex gap-0.5">
-                                                                {Array.from({ length: p.level }).map((_, i) => (
-                                                                    <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
-                                                                ))}
-                                                            </div>
+                                                            {/* Nível oculto para evitar constrangimento */}
                                                         </div>
                                                     ))}
                                                 </div>
@@ -1808,11 +1961,7 @@
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex gap-0.5">
-                                                                {Array.from({ length: p.level || 0 }).map((_, i) => (
-                                                                    <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
-                                                                ))}
-                                                            </div>
+                                                            {/* Nível oculto na aba jogador para evitar constrangimento */}
                                                         </div>
                                                     );
                                                 })}
@@ -1825,11 +1974,7 @@
                                                         {guests.map(g => (
                                                             <div key={g.id} className="bg-yellow-50 border border-yellow-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
                                                                 <span className="text-xs font-bold text-yellow-700">{g.name} {g.isGoalkeeper && <span className="text-[8px] bg-amber-100 text-amber-600 px-1 rounded ml-1">GK</span>}</span>
-                                                                <div className="flex gap-0.5">
-                                                                    {Array.from({ length: g.level }).map((_, i) => (
-                                                                        <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
-                                                                    ))}
-                                                                </div>
+                                                                {/* Nível oculto na aba jogador para evitar constrangimento */}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -2070,6 +2215,138 @@
                         </nav>
                     )}
 
+                    {/* Modal de Edição de Jogador */}
+                    {showEditPlayerModal && editingPlayer && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+                            <motion.div 
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+                            >
+                                <div className="p-6 space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xl font-bold text-zinc-800">Editar Jogador</h3>
+                                        <button onClick={() => setShowEditPlayerModal(false)} className="text-zinc-400 hover:text-zinc-600">
+                                            <Icon name="x" size={24} />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-zinc-400 uppercase">Nome</label>
+                                            <input 
+                                                type="text" 
+                                                value={editingPlayer.name} 
+                                                onChange={(e) => setEditingPlayer({...editingPlayer, name: e.target.value})} 
+                                                className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold" 
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-zinc-400 uppercase">Nível (Estrelas)</label>
+                                            <div className="flex gap-2 bg-zinc-50 p-2 rounded-xl justify-center">
+                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                    <button 
+                                                        key={star} 
+                                                        onClick={() => setEditingPlayer({...editingPlayer, level: star})} 
+                                                        className={`p-1 transition-all ${editingPlayer.level >= star ? 'text-amber-400 scale-110' : 'text-zinc-300 scale-100'}`}
+                                                    >
+                                                        <Icon name="star" size={24} fill={editingPlayer.level >= star ? "currentColor" : "none"} />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipo</label>
+                                                <select 
+                                                    value={editingPlayer.type}
+                                                    onChange={(e) => setEditingPlayer({...editingPlayer, type: e.target.value})}
+                                                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none text-xs font-bold"
+                                                >
+                                                    <option value="mensalista">Mensalista</option>
+                                                    <option value="diarista">Diarista</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-zinc-400 uppercase">Posição</label>
+                                                <button 
+                                                    onClick={() => setEditingPlayer({...editingPlayer, isGoalkeeper: !editingPlayer.isGoalkeeper})}
+                                                    className={`w-full py-3 rounded-xl border font-bold text-xs transition-all ${editingPlayer.isGoalkeeper ? 'bg-amber-100 border-amber-500 text-amber-600' : 'bg-zinc-100 border-zinc-200 text-zinc-500'}`}
+                                                >
+                                                    {editingPlayer.isGoalkeeper ? 'GOLEIRO' : 'LINHA'}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {editingPlayer.type === 'mensalista' && (
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-zinc-400 uppercase">Vencimento</label>
+                                                <input 
+                                                    type="date" 
+                                                    value={editingPlayer.dueDate || ''} 
+                                                    onChange={(e) => setEditingPlayer({...editingPlayer, dueDate: e.target.value})}
+                                                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none text-xs font-bold" 
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="pt-2 border-t border-zinc-100">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Icon name="alert-triangle" size={16} className={editingPlayer.isPunished ? "text-red-500" : "text-zinc-300"} />
+                                                    <span className="text-xs font-bold text-zinc-600">Punição Ativa</span>
+                                                </div>
+                                                <button 
+                                                    onClick={() => setEditingPlayer({...editingPlayer, isPunished: !editingPlayer.isPunished, punishmentCount: !editingPlayer.isPunished ? (editingPlayer.punishmentCount || 1) : 0})}
+                                                    className={`w-12 h-6 rounded-full transition-all relative ${editingPlayer.isPunished ? 'bg-red-500' : 'bg-zinc-200'}`}
+                                                >
+                                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${editingPlayer.isPunished ? 'left-7' : 'left-1'}`} />
+                                                </button>
+                                            </div>
+                                            {editingPlayer.isPunished && (
+                                                <div className="mt-3 flex items-center justify-between bg-red-50 p-3 rounded-xl border border-red-100">
+                                                    <span className="text-[10px] font-bold text-red-600 uppercase">Qtd. de Babas</span>
+                                                    <div className="flex items-center gap-3">
+                                                        <button 
+                                                            onClick={() => setEditingPlayer({...editingPlayer, punishmentCount: Math.max(1, editingPlayer.punishmentCount - 1)})}
+                                                            className="w-8 h-8 rounded-lg bg-white border border-red-200 flex items-center justify-center text-red-600"
+                                                        >
+                                                            -
+                                                        </button>
+                                                        <span className="font-bold text-red-600">{editingPlayer.punishmentCount}</span>
+                                                        <button 
+                                                            onClick={() => setEditingPlayer({...editingPlayer, punishmentCount: editingPlayer.punishmentCount + 1})}
+                                                            className="w-8 h-8 rounded-lg bg-white border border-red-200 flex items-center justify-center text-red-600"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3 pt-2">
+                                        <button 
+                                            onClick={() => setShowEditPlayerModal(false)} 
+                                            className="flex-1 bg-zinc-100 text-zinc-600 font-bold py-4 rounded-2xl"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            onClick={updatePlayerFull} 
+                                            className="flex-2 bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-emerald-600/20"
+                                        >
+                                            Salvar Alterações
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+
                     {/* Modal de Cargo de Comissão e Ausência */}
                     {showRoleModal && selectedPlayerForRole && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
@@ -2099,6 +2376,44 @@
                                             >
                                                 <Icon name="shield" size={18} />
                                                 {selectedPlayerForRole.role === 'commission' ? 'Remover Cargo' : 'Definir como Comissão'}
+                                            </button>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <button 
+                                                    onClick={() => {
+                                                        setEditingPlayer({...selectedPlayerForRole});
+                                                        setShowEditPlayerModal(true);
+                                                        setShowRoleModal(false);
+                                                    }}
+                                                    className="py-4 rounded-2xl font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 border border-emerald-100"
+                                                >
+                                                    <Icon name="edit" size={18} />
+                                                    Editar
+                                                </button>
+
+                                                <button 
+                                                    onClick={() => {
+                                                        if (confirm(`Deseja realmente excluir ${selectedPlayerForRole.name}?`)) {
+                                                            removePlayer(selectedPlayerForRole.id);
+                                                            setShowRoleModal(false);
+                                                        }
+                                                    }}
+                                                    className="py-4 rounded-2xl font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors flex items-center justify-center gap-2 border border-red-100"
+                                                >
+                                                    <Icon name="trash-2" size={18} />
+                                                    Excluir
+                                                </button>
+                                            </div>
+
+                                            <button 
+                                                onClick={() => {
+                                                    togglePlayerStatus(selectedPlayerForRole.id, 'isGoalkeeper');
+                                                    setShowRoleModal(false);
+                                                }}
+                                                className={`w-full py-4 rounded-2xl font-bold transition-colors flex items-center justify-center gap-2 ${selectedPlayerForRole.isGoalkeeper ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
+                                            >
+                                                <Icon name="shield" size={18} />
+                                                {selectedPlayerForRole.isGoalkeeper ? 'Remover Goleiro' : 'Definir como Goleiro'}
                                             </button>
 
                                             {selectedPlayerForRole.role === 'commission' && (
@@ -2189,6 +2504,20 @@
                                         <button onClick={handleAdminAuth} className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-bold">Entrar</button>
                                     </div>
                                 </div>
+
+                                {accessHistory.length > 0 && (
+                                    <div className="pt-4 border-t border-zinc-100">
+                                        <p className="text-[10px] font-bold text-zinc-400 uppercase mb-2 text-center">Últimos Acessos</p>
+                                        <div className="space-y-2">
+                                            {accessHistory.map((access, idx) => (
+                                                <div key={idx} className="flex justify-between items-center text-[10px] text-zinc-500 bg-zinc-50 px-3 py-2 rounded-lg">
+                                                    <span className="font-bold text-zinc-700">{access.user}</span>
+                                                    <span>{access.time}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
