@@ -134,6 +134,10 @@
             // Match States
             const [teams, setTeams] = useState([]); // Array of { name: 'Time 1', players: [], score: 0 }
             const [currentMatchTeams, setCurrentMatchTeams] = useState([0, 1]); // Indices of teams in match
+            const [teamQueue, setTeamQueue] = useState([]); // Queue of team indices
+            const [playersInDrawIds, setPlayersInDrawIds] = useState([]); // IDs of players who were in the draw
+            const [currentLoans, setCurrentLoans] = useState([]); // Array of { fromTeamIdx, toTeamIdx, player }
+            const [loanedPlayersIdsByTeam, setLoanedPlayersIdsByTeam] = useState({}); // { teamIdx: [playerIds] }
             const [matchHistory, setMatchHistory] = useState([]); // Array of { t1: name, s1: score, t2: name, s2: score, time: string }
             const [showDaySummary, setShowDaySummary] = useState(false);
             const [timerSeconds, setTimerSeconds] = useState(0);
@@ -212,6 +216,18 @@
                                     if (data.record.lastDraw.currentMatchTeams) {
                                         setCurrentMatchTeams(data.record.lastDraw.currentMatchTeams);
                                     }
+                                    if (data.record.lastDraw.teamQueue) {
+                                        setTeamQueue(data.record.lastDraw.teamQueue);
+                                    }
+                                    if (data.record.lastDraw.playersInDrawIds) {
+                                        setPlayersInDrawIds(data.record.lastDraw.playersInDrawIds);
+                                    }
+                                    if (data.record.lastDraw.currentLoans) {
+                                        setCurrentLoans(data.record.lastDraw.currentLoans);
+                                    }
+                                    if (data.record.lastDraw.loanedPlayersIdsByTeam) {
+                                        setLoanedPlayersIdsByTeam(data.record.lastDraw.loanedPlayersIdsByTeam);
+                                    }
                                 } else if (data.record.lastDraw.teamA) {
                                     setTeams([
                                         { ...data.record.lastDraw.teamA, name: 'Time 1' },
@@ -230,17 +246,20 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory) => {
+            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory, newCurrentLoans, newLoanHistory) => {
                 try {
-                    const currentDraw = lastDraw !== undefined ? lastDraw : (teams.length > 0 ? { teams, currentMatchTeams } : null);
-                    const historyToSave = newHistory !== undefined ? newHistory : matchHistory;
+                    // Pruning logic to save space in JSONbin
+                    const prunedFinances = (newFinances !== undefined ? newFinances : finances).slice(-200); // Keep last 200 financial records
+                    const prunedAccessHistory = (newAccessHistory !== undefined ? newAccessHistory : accessHistory).slice(-50); // Keep last 50 access logs
+                    
+                    const currentDraw = lastDraw !== undefined ? lastDraw : (teams.length > 0 ? { teams, currentMatchTeams, teamQueue, playersInDrawIds, currentLoans: newCurrentLoans || currentLoans, loanedPlayersIdsByTeam: newLoanHistory || loanedPlayersIdsByTeam } : null);
+                    const historyToSave = (newHistory !== undefined ? newHistory : matchHistory).slice(-50); // Keep last 50 matches (usually just one day)
                     const summaryToSave = newShowSummary !== undefined ? newShowSummary : showDaySummary;
                     const guestsToSave = newGuests !== undefined ? newGuests : guests;
                     const confirmedToSave = newConfirmedIds !== undefined ? newConfirmedIds : confirmedPlayerIds;
                     const mensalidadeToSave = newMensalidade !== undefined ? newMensalidade : mensalidadeValue;
                     const diariaToSave = newDiaria !== undefined ? newDiaria : diariaValue;
                     const absentToSave = newAbsentIds !== undefined ? newAbsentIds : absentCommissionIds;
-                    const accessHistoryToSave = newAccessHistory !== undefined ? newAccessHistory : accessHistory;
                     
                     const response = await fetch(API_URL, {
                         method: 'PUT',
@@ -250,7 +269,7 @@
                         },
                         body: JSON.stringify({ 
                             players: newPlayers, 
-                            finances: newFinances,
+                            finances: prunedFinances,
                             lastDraw: currentDraw,
                             matchHistory: historyToSave,
                             showDaySummary: summaryToSave,
@@ -259,7 +278,7 @@
                             mensalidadeValue: mensalidadeToSave,
                             diariaValue: diariaToSave,
                             absentCommissionIds: absentToSave,
-                            accessHistory: accessHistoryToSave
+                            accessHistory: prunedAccessHistory
                         })
                     });
 
@@ -769,11 +788,18 @@
                     t.players = t.players.sort(() => Math.random() - 0.5);
                 });
 
+                const inDrawIds = activePlayersPool.map(p => p.id);
+                setPlayersInDrawIds(inDrawIds);
+
                 setTeams(newTeams);
+                const initialQueue = Array.from({ length: numTeams }, (_, i) => i);
+                setTeamQueue(initialQueue);
                 setCurrentMatchTeams([0, 1]);
                 setMatchHistory([]);
+                setCurrentLoans([]);
+                setLoanedPlayersIdsByTeam({});
                 setShowDaySummary(false);
-                saveData(players, finances, { teams: newTeams, currentMatchTeams: [0, 1] }, [], false);
+                saveData(players, finances, { teams: newTeams, currentMatchTeams: [0, 1], teamQueue: initialQueue, playersInDrawIds: inDrawIds }, [], false);
                 setCurrentTab('teams');
             };
 
@@ -792,8 +818,10 @@
             };
 
             const endMatch = () => {
-                const t1 = teams[currentMatchTeams[0]];
-                const t2 = teams[currentMatchTeams[1]];
+                const t1Idx = currentMatchTeams[0];
+                const t2Idx = currentMatchTeams[1];
+                const t1 = teams[t1Idx];
+                const t2 = teams[t2Idx];
                 if (!t1 || !t2) return;
 
                 const newMatch = {
@@ -814,7 +842,77 @@
                 setTimerSeconds(0);
                 setIsTimerRunning(false);
 
-                saveData(players, finances, { teams: updatedTeams, currentMatchTeams }, updatedHistory);
+                // Lógica de Partida: Quem ganha fica, quem perde sai
+                let newQueue = teamQueue.length > 0 ? [...teamQueue] : Array.from({ length: teams.length }, (_, i) => i);
+                let newMatchTeams = [...currentMatchTeams];
+
+                if (t1.score > t2.score) {
+                    // Time 1 ganhou, Time 2 sai
+                    newQueue = newQueue.filter(idx => idx !== t2Idx);
+                    newQueue.push(t2Idx);
+                    const nextTeamIdx = newQueue.find(idx => idx !== t1Idx);
+                    newMatchTeams = [t1Idx, nextTeamIdx];
+                } else if (t2.score > t1.score) {
+                    // Time 2 ganhou, Time 1 sai
+                    newQueue = newQueue.filter(idx => idx !== t1Idx);
+                    newQueue.push(t1Idx);
+                    const nextTeamIdx = newQueue.find(idx => idx !== t2Idx);
+                    newMatchTeams = [t2Idx, nextTeamIdx];
+                } else {
+                    // Empate
+                    if (teams.length >= 4) {
+                        // Saem os dois
+                        newQueue = newQueue.filter(idx => idx !== t1Idx && idx !== t2Idx);
+                        newQueue.push(t1Idx, t2Idx);
+                        newMatchTeams = [newQueue[0], newQueue[1]];
+                    } else if (teams.length === 3) {
+                        // 3 times, empate: pede para definir novo confronto
+                        alert('Empate com 3 times! Defina o próximo confronto manualmente.');
+                    }
+                }
+
+                setTeamQueue(newQueue);
+                setCurrentMatchTeams(newMatchTeams);
+                setCurrentLoans([]); // Clear loans when match ends
+                saveData(players, finances, { teams: updatedTeams, currentMatchTeams: newMatchTeams, teamQueue: newQueue, currentLoans: [], loanedPlayersIdsByTeam }, updatedHistory);
+            };
+
+            const handleAutoSubstitution = (targetTeamIdx) => {
+                if (teams.length < 3) {
+                    alert('Substituição automática requer pelo menos 3 times.');
+                    return;
+                }
+
+                // O time que empresta é o último da fila
+                const sourceTeamIdx = teamQueue[teamQueue.length - 1];
+                const sourceTeam = teams[sourceTeamIdx];
+                
+                if (!sourceTeam) return;
+
+                // Jogadores do time de origem que ainda não foram emprestados neste ciclo
+                const alreadyLoanedIds = loanedPlayersIdsByTeam[sourceTeamIdx] || [];
+                let availablePlayers = sourceTeam.players.filter(p => !alreadyLoanedIds.includes(p.id));
+
+                // Se todos já foram emprestados, reinicia o ciclo para este time
+                if (availablePlayers.length === 0) {
+                    availablePlayers = [...sourceTeam.players];
+                    setLoanedPlayersIdsByTeam(prev => ({ ...prev, [sourceTeamIdx]: [] }));
+                }
+
+                // Seleciona um jogador (o primeiro disponível)
+                const playerToLoan = availablePlayers[0];
+                if (!playerToLoan) return;
+
+                // Atualiza empréstimos atuais e histórico de empréstimos
+                const newLoans = [...currentLoans, { fromTeamIdx: sourceTeamIdx, toTeamIdx: targetTeamIdx, player: playerToLoan }];
+                const newLoanHistory = { ...loanedPlayersIdsByTeam, [sourceTeamIdx]: [...(loanedPlayersIdsByTeam[sourceTeamIdx] || []), playerToLoan.id] };
+                
+                setCurrentLoans(newLoans);
+                setLoanedPlayersIdsByTeam(newLoanHistory);
+
+                saveData(players, finances, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, newLoans, newLoanHistory);
+
+                alert(`JOGADOR EMPRESTADO: ${playerToLoan.name}\n(Do ${sourceTeam.name} para o ${teams[targetTeamIdx].name})`);
             };
 
             const endDay = () => {
@@ -828,10 +926,16 @@
                 const paidDiaristas = players.filter(p => p.type === 'diarista' && p.paymentStatus === 'pago');
                 
                 // Diaristas
-                paidDiaristas.forEach((p, index) => {
+                // Incluir quem pagou OU quem estava no sorteio (mesmo que ausente agora)
+                const diaristasToCharge = players.filter(p => 
+                    p.type === 'diarista' && 
+                    (p.paymentStatus === 'pago' || playersInDrawIds.includes(p.id))
+                );
+                
+                diaristasToCharge.forEach((p, index) => {
                     newFinances.push({
                         id: `d-${Date.now()}-${p.id}-${index}`,
-                        description: `Diária: ${p.name}`,
+                        description: `Diária: ${p.name}${playersInDrawIds.includes(p.id) && !isPlayerConfirmed(p) ? ' (Ausente)' : ''}`,
                         amount: diariaValue,
                         type: 'income',
                         date: new Date().toLocaleDateString('pt-BR'),
@@ -839,8 +943,8 @@
                     });
                 });
 
-                // Convidados (sempre pagam diária)
-                guests.forEach((g, index) => {
+                // Convidados (apenas os que pagaram)
+                guests.filter(g => g.paymentStatus === 'pago').forEach((g, index) => {
                     newFinances.push({
                         id: `g-${Date.now()}-${g.id}-${index}`,
                         description: `Diária (Conv.): ${g.name}`,
@@ -879,6 +983,9 @@
                 setMatchHistory([]);
                 setTeams([]);
                 setGuests([]);
+                setPlayersInDrawIds([]);
+                setCurrentLoans([]);
+                setLoanedPlayersIdsByTeam({});
                 setShowDaySummary(false);
                 
                 const updatedPlayers = players.map(p => {
@@ -1157,9 +1264,43 @@
                                                              className="w-full bg-zinc-800 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-zinc-700 transition-colors"
                                                          >
                                                              <Icon name="share-2" size={14} /> ENVIAR LEVANTAMENTO (WA)
-                                                         </button>
-                                                     </div>
-                                                 </section>
+                                                          </button>
+                                                      </div>
+                                                  </section>
+
+                                                  <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                                                      <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
+                                                          <Icon name="database" size={16} />
+                                                          Manutenção de Banco
+                                                      </h3>
+                                                      <div className="space-y-3">
+                                                          <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">
+                                                              O sistema remove automaticamente registros antigos ao salvar. Use o botão abaixo para forçar uma limpeza profunda de sorteios e históricos antigos para liberar espaço no servidor.
+                                                          </p>
+                                                          <button 
+                                                              onClick={async () => {
+                                                                  if (confirm("Deseja realizar uma limpeza profunda no banco de dados? Isso removerá históricos de sorteios e logs de acesso antigos para otimizar o armazenamento.")) {
+                                                                      setIsSavingSettings(true);
+                                                                      // Força limpeza profunda: limpa lastDraw se não houver baba ativo e reduz históricos
+                                                                      const deepPrunedFinances = finances.slice(-100);
+                                                                      const deepPrunedAccess = accessHistory.slice(-20);
+                                                                      await saveData(players, deepPrunedFinances, null, [], false, [], undefined, mensalidadeValue, diariaValue, absentCommissionIds, deepPrunedAccess);
+                                                                      setFinances(deepPrunedFinances);
+                                                                      setAccessHistory(deepPrunedAccess);
+                                                                      setMatchHistory([]);
+                                                                      setTeams([]);
+                                                                      setTimerSeconds(0);
+                                                                      setIsTimerRunning(false);
+                                                                      setIsSavingSettings(false);
+                                                                      alert("Limpeza profunda concluída com sucesso!");
+                                                                  }
+                                                              }}
+                                                              className="w-full bg-red-50 text-red-600 font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
+                                                          >
+                                                              <Icon name="trash-2" size={14} /> LIMPEZA PROFUNDA (OTIMIZAR)
+                                                          </button>
+                                                      </div>
+                                                  </section>
 
                                                  <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
                                                     <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
@@ -1579,16 +1720,13 @@
                                                                 <button 
                                                                     onClick={() => {
                                                                         if (!newGuestName.trim()) return;
-                                                                        if (!isGuestPaid && !isGuestGoalkeeper) {
-                                                                            alert('Convidado deve pagar antes de ser adicionado!');
-                                                                            return;
-                                                                        }
                                                                         const updatedGuests = [...guests, {
                                                                             id: `guest-${Date.now()}`,
                                                                             name: newGuestName.trim() + ' (Conv.)',
                                                                             level: newGuestRating,
                                                                             isGoalkeeper: isGuestGoalkeeper,
-                                                                            isGuest: true
+                                                                            isGuest: true,
+                                                                            paymentStatus: isGuestGoalkeeper ? 'isento' : (isGuestPaid ? 'pago' : 'devendo')
                                                                         }];
                                                                         setGuests(updatedGuests);
                                                                         saveData(players, finances, undefined, matchHistory, showDaySummary, updatedGuests);
@@ -1905,9 +2043,67 @@
                                                     {team.players.map(p => (
                                                         <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
                                                             <span className="text-sm font-medium text-zinc-700">{p.name}</span>
-                                                            {/* Nível oculto para evitar constrangimento */}
+                                                            {isAdminMode && (
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        if (confirm(`Declarar ausência de ${p.name} neste time?`)) {
+                                                                            const updatedTeams = teams.map((t, tIdx) => {
+                                                                                if (tIdx === idx) {
+                                                                                    return {
+                                                                                        ...t,
+                                                                                        players: t.players.filter(player => player.id !== p.id)
+                                                                                    };
+                                                                                }
+                                                                                return t;
+                                                                            });
+                                                                            const newConfirmed = confirmedPlayerIds.filter(id => id !== p.id);
+                                                                            setTeams(updatedTeams);
+                                                                            setConfirmedPlayerIds(newConfirmed);
+                                                                            saveData(players, finances, { teams: updatedTeams, currentMatchTeams, teamQueue }, undefined, undefined, undefined, newConfirmed);
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-red-500 hover:bg-red-50 px-2 py-1 rounded border border-red-100"
+                                                                >
+                                                                    AUSENTE
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     ))}
+                                                    
+                                                    {isAdminMode && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                const guestName = prompt('Nome do convidado para completar o time:');
+                                                                if (guestName) {
+                                                                    const isPaid = confirm(`${guestName} já pagou a diária? (OK = Pago, Cancelar = Devendo)`);
+                                                                    const newGuest = {
+                                                                        id: `late-guest-${Date.now()}`,
+                                                                        name: guestName,
+                                                                        isGoalkeeper: false,
+                                                                        rating: 3,
+                                                                        type: 'convidado',
+                                                                        paymentStatus: isPaid ? 'pago' : 'devendo'
+                                                                    };
+                                                                    const updatedTeams = teams.map((t, tIdx) => {
+                                                                        if (tIdx === idx) {
+                                                                            return {
+                                                                                ...t,
+                                                                                players: [...t.players, newGuest]
+                                                                            };
+                                                                        }
+                                                                        return t;
+                                                                    });
+                                                                    const updatedGuests = [...guests, newGuest];
+                                                                    setTeams(updatedTeams);
+                                                                    setGuests(updatedGuests);
+                                                                    saveData(players, finances, { teams: updatedTeams, currentMatchTeams, teamQueue }, undefined, undefined, updatedGuests);
+                                                                }
+                                                            }}
+                                                            className="w-full mt-2 py-2 border-2 border-dashed border-zinc-200 rounded-xl text-[10px] font-bold text-zinc-400 hover:border-emerald-200 hover:text-emerald-600 transition-colors flex items-center justify-center gap-2"
+                                                        >
+                                                            <Icon name="user-plus" size={14} /> COMPLETAR TIME
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         ))}
@@ -2049,6 +2245,11 @@
                                                                 {p.name}
                                                             </span>
                                                         ))}
+                                                        {currentLoans.filter(l => l.toTeamIdx === idx).map((l, lIdx) => (
+                                                            <span key={`loan-${lIdx}`} className="text-[10px] bg-amber-50 px-2 py-1 rounded-md border border-amber-200 text-amber-700 font-bold flex items-center gap-1">
+                                                                <Icon name="repeat" size={10} /> {l.player.name}
+                                                            </span>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             ))}
@@ -2093,7 +2294,11 @@
                                                             onChange={(e) => {
                                                                 const newMatch = [parseInt(e.target.value), currentMatchTeams[1]];
                                                                 setCurrentMatchTeams(newMatch);
-                                                                saveData(players, finances, { teams, currentMatchTeams: newMatch });
+                                                                let newQueue = teamQueue.length > 0 ? [...teamQueue] : Array.from({ length: teams.length }, (_, i) => i);
+                                                                newQueue = newQueue.filter(idx => !newMatch.includes(idx));
+                                                                newQueue = [...newMatch, ...newQueue];
+                                                                setTeamQueue(newQueue);
+                                                                saveData(players, finances, { teams, currentMatchTeams: newMatch, teamQueue: newQueue });
                                                             }}
                                                             className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-100"
                                                         >
@@ -2106,7 +2311,11 @@
                                                             onChange={(e) => {
                                                                 const newMatch = [currentMatchTeams[0], parseInt(e.target.value)];
                                                                 setCurrentMatchTeams(newMatch);
-                                                                saveData(players, finances, { teams, currentMatchTeams: newMatch });
+                                                                let newQueue = teamQueue.length > 0 ? [...teamQueue] : Array.from({ length: teams.length }, (_, i) => i);
+                                                                newQueue = newQueue.filter(idx => !newMatch.includes(idx));
+                                                                newQueue = [...newMatch, ...newQueue];
+                                                                setTeamQueue(newQueue);
+                                                                saveData(players, finances, { teams, currentMatchTeams: newMatch, teamQueue: newQueue });
                                                             }}
                                                             className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-100"
                                                         >
@@ -2124,9 +2333,17 @@
                                                             <p className={`text-xs font-bold uppercase tracking-widest ${i === 0 ? 'text-emerald-600' : 'text-zinc-800'}`}>{team.name}</p>
                                                             <p className="text-6xl font-black">{team.score}</p>
                                                             {isAdminMode && (
-                                                                <div className="flex justify-center gap-2">
-                                                                    <button onClick={() => updateScore(teamIdx, -1)} className="p-2 bg-zinc-100 rounded-xl"><Icon name="minus" size={20} /></button>
-                                                                    <button onClick={() => updateScore(teamIdx, 1)} className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><Icon name="plus" size={20} /></button>
+                                                                <div className="space-y-2">
+                                                                    <div className="flex justify-center gap-2">
+                                                                        <button onClick={() => updateScore(teamIdx, -1)} className="p-2 bg-zinc-100 rounded-xl"><Icon name="minus" size={20} /></button>
+                                                                        <button onClick={() => updateScore(teamIdx, 1)} className="p-2 bg-emerald-100 text-emerald-600 rounded-xl"><Icon name="plus" size={20} /></button>
+                                                                    </div>
+                                                                    <button 
+                                                                        onClick={() => handleAutoSubstitution(teamIdx)}
+                                                                        className="w-full py-2 bg-zinc-100 text-zinc-600 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-amber-50 hover:text-amber-600 transition-colors"
+                                                                    >
+                                                                        <Icon name="repeat" size={12} /> SUBSTITUIÇÃO AUTO
+                                                                    </button>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -2425,6 +2642,53 @@
                                                     {isPlayerConfirmed(selectedPlayerForRole) ? 'Declarar Ausência' : 'Confirmar Presença'}
                                                 </button>
                                             )}
+
+                                            <button 
+                                                onClick={() => {
+                                                    const p = selectedPlayerForRole;
+                                                    if (!p.isPunished) {
+                                                        const count = prompt('Quantos babas de punição?', '1');
+                                                        if (count === null) return;
+                                                        const fine = prompt('Valor da multa (R$)?', '0');
+                                                        if (fine === null) return;
+
+                                                        const countNum = parseInt(count) || 1;
+                                                        const fineNum = parseFloat(fine) || 0;
+
+                                                        const updatedPlayers = players.map(player => 
+                                                            player.id === p.id ? { 
+                                                                ...player, 
+                                                                isPunished: true, 
+                                                                punishmentCount: countNum,
+                                                                punishmentFine: fineNum,
+                                                                punishmentFinePaid: fineNum > 0 ? false : true
+                                                            } : player
+                                                        );
+                                                        const newConfirmed = confirmedPlayerIds.filter(id => id !== p.id);
+                                                        setPlayers(updatedPlayers);
+                                                        setConfirmedPlayerIds(newConfirmed);
+                                                        saveData(updatedPlayers, finances, undefined, matchHistory, undefined, undefined, newConfirmed);
+                                                    } else {
+                                                        const updatedPlayers = players.map(player => 
+                                                            player.id === p.id ? { ...player, isPunished: false, punishmentCount: 0, punishmentFine: 0, punishmentFinePaid: true } : player
+                                                        );
+                                                        
+                                                        let newConfirmed = [...confirmedPlayerIds];
+                                                        if (((p.type === 'mensalista' && p.paymentStatus === 'pago') || p.role === 'commission') && !newConfirmed.includes(p.id)) {
+                                                            newConfirmed.push(p.id);
+                                                        }
+                                                        
+                                                        setPlayers(updatedPlayers);
+                                                        setConfirmedPlayerIds(newConfirmed);
+                                                        saveData(updatedPlayers, finances, undefined, matchHistory, undefined, undefined, newConfirmed);
+                                                    }
+                                                    setShowRoleModal(false);
+                                                }}
+                                                className={`w-full py-4 rounded-2xl font-bold transition-colors flex items-center justify-center gap-2 ${selectedPlayerForRole.isPunished ? 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                                            >
+                                                <Icon name={selectedPlayerForRole.isPunished ? "unlock" : "alert-circle"} size={18} />
+                                                {selectedPlayerForRole.isPunished ? 'Liberar Jogador' : 'Punir Jogador'}
+                                            </button>
                                             
                                             <button 
                                                 onClick={() => {
