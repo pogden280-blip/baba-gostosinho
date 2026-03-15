@@ -148,6 +148,13 @@
             const [drawMode, setDrawMode] = useState('teams');
             const timerRef = useRef(null);
 
+            // Goal Tracking States
+            const [showGoalModal, setShowGoalModal] = useState(false);
+            const [goalTeamIdx, setGoalTeamIdx] = useState(null);
+            const [goalStep, setGoalStep] = useState('scorer'); // 'scorer', 'assistant'
+            const [currentScorer, setCurrentScorer] = useState(null);
+            const [currentMatchGoals, setCurrentMatchGoals] = useState([]); // Array of { scorerId, scorerName, assistantId, assistantName }
+
             // Carregar dados do JSONbin
             useEffect(() => {
                 const fetchData = async () => {
@@ -811,9 +818,53 @@
             };
 
             const updateScore = (teamIdx, val) => {
+                if (val > 0) {
+                    setGoalTeamIdx(teamIdx);
+                    setGoalStep('scorer');
+                    setCurrentScorer(null);
+                    setShowGoalModal(true);
+                } else {
+                    const updatedTeams = [...teams];
+                    updatedTeams[teamIdx].score = Math.max(0, updatedTeams[teamIdx].score + val);
+                    setTeams(updatedTeams);
+                    
+                    // Remove last goal for this team if decrementing
+                    if (currentMatchGoals.length > 0) {
+                        const lastGoalIdx = [...currentMatchGoals].reverse().findIndex(g => g.teamIdx === teamIdx);
+                        if (lastGoalIdx !== -1) {
+                            const actualIdx = currentMatchGoals.length - 1 - lastGoalIdx;
+                            const newGoals = [...currentMatchGoals];
+                            newGoals.splice(actualIdx, 1);
+                            setCurrentMatchGoals(newGoals);
+                        }
+                    }
+                    
+                    saveData(players, finances, { teams: updatedTeams, currentMatchTeams }, matchHistory);
+                }
+            };
+
+            const handleGoalScored = (scorer) => {
+                setCurrentScorer(scorer);
+                setGoalStep('assistant');
+            };
+
+            const handleAssistMade = (assistant) => {
+                const newGoal = {
+                    teamIdx: goalTeamIdx,
+                    scorerId: currentScorer.id,
+                    scorerName: currentScorer.name,
+                    assistantId: assistant ? assistant.id : null,
+                    assistantName: assistant ? assistant.name : 'Sem assistência'
+                };
+
+                const newGoals = [...currentMatchGoals, newGoal];
+                setCurrentMatchGoals(newGoals);
+
                 const updatedTeams = [...teams];
-                updatedTeams[teamIdx].score = Math.max(0, updatedTeams[teamIdx].score + val);
+                updatedTeams[goalTeamIdx].score += 1;
                 setTeams(updatedTeams);
+
+                setShowGoalModal(false);
                 saveData(players, finances, { teams: updatedTeams, currentMatchTeams }, matchHistory);
             };
 
@@ -829,6 +880,7 @@
                     s1: t1.score,
                     t2: t2.name,
                     s2: t2.score,
+                    goals: currentMatchGoals,
                     time: formatTime(timerSeconds),
                     timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                 };
@@ -836,9 +888,10 @@
                 const updatedHistory = [...matchHistory, newMatch];
                 setMatchHistory(updatedHistory);
                 
-                // Reset scores for next match
+                // Reset scores and goals for next match
                 const updatedTeams = teams.map(t => ({ ...t, score: 0 }));
                 setTeams(updatedTeams);
+                setCurrentMatchGoals([]);
                 setTimerSeconds(0);
                 setIsTimerRunning(false);
 
@@ -1017,11 +1070,21 @@
             };
 
             const shareDaySummary = () => {
-                const stats = calculateStats();
+                const { teamStats: stats, playerStats } = calculateStats();
                 const sortedStats = Object.entries(stats).sort((a, b) => {
                     if (b[1].v !== a[1].v) return b[1].v - a[1].v;
                     return b[1].gp - a[1].gp;
                 });
+
+                const topScorers = Object.values(playerStats)
+                    .filter(p => p.goals > 0)
+                    .sort((a, b) => b.goals - a.goals)
+                    .slice(0, 3);
+
+                const topAssists = Object.values(playerStats)
+                    .filter(p => p.assists > 0)
+                    .sort((a, b) => b.assists - a.assists)
+                    .slice(0, 3);
 
                 let winnerText = "";
                 if (sortedStats.length > 0) {
@@ -1037,6 +1100,20 @@
                 sortedStats.forEach(([name, s]) => {
                     text += `${name}: ${s.v}V | ${s.e}E | ${s.d}D | ${s.gp} Gols\n`;
                 });
+
+                if (topScorers.length > 0) {
+                    text += `\n🔥 *ARTILHARIA:*\n`;
+                    topScorers.forEach(p => {
+                        text += `${p.name}: ${p.goals} Gols\n`;
+                    });
+                }
+
+                if (topAssists.length > 0) {
+                    text += `\n🎯 *ASSISTÊNCIAS:*\n`;
+                    topAssists.forEach(p => {
+                        text += `${p.name}: ${p.assists} Ast\n`;
+                    });
+                }
 
                 text += `\n👥 *ELENCOS:*\n`;
                 teams.forEach(t => {
@@ -1055,6 +1132,16 @@
 
             const calculateStats = () => {
                 const stats = {};
+                const playerStats = {};
+
+                // Initialize player stats
+                players.forEach(p => {
+                    playerStats[p.id] = { name: p.name, goals: 0, assists: 0 };
+                });
+                guests.forEach(g => {
+                    playerStats[g.id] = { name: g.name, goals: 0, assists: 0 };
+                });
+
                 teams.forEach(t => {
                     stats[t.name] = { v: 0, e: 0, d: 0, gp: 0 };
                 });
@@ -1076,8 +1163,25 @@
                         stats[m.t1].e += 1;
                         stats[m.t2].e += 1;
                     }
+
+                    // Process goals and assists
+                    if (m.goals) {
+                        m.goals.forEach(g => {
+                            if (playerStats[g.scorerId]) {
+                                playerStats[g.scorerId].goals += 1;
+                            } else {
+                                playerStats[g.scorerId] = { name: g.scorerName, goals: 1, assists: 0 };
+                            }
+
+                            if (g.assistantId && playerStats[g.assistantId]) {
+                                playerStats[g.assistantId].assists += 1;
+                            } else if (g.assistantId) {
+                                playerStats[g.assistantId] = { name: g.assistantName, goals: 0, assists: 1 };
+                            }
+                        });
+                    }
                 });
-                return stats;
+                return { teamStats: stats, playerStats };
             };
 
             const shareMatch = () => {
@@ -1320,7 +1424,13 @@
                                                     </div>
                                                 </section>
                                                 <div className="space-y-2">
-                                                    {finances.slice().reverse().map(f => (
+                                                    {finances.length === 0 ? (
+                                         <div className="bg-zinc-50 p-8 rounded-2xl border border-dashed border-zinc-200 text-center">
+                                             <Icon name="dollar-sign" size={32} className="mx-auto text-zinc-300 mb-2" />
+                                             <p className="text-xs text-zinc-400 font-medium">Nenhuma transação registrada.</p>
+                                             <a href="https://pogden280-blip.github.io/baba-gostosinho/" target="_blank" className="text-[10px] text-emerald-600 font-bold mt-2 block hover:underline">Link do App</a>
+                                         </div>
+                                     ) : finances.slice().reverse().map(f => (
                                                         <div key={f.id} className="bg-white p-4 rounded-xl border border-zinc-200 flex items-center justify-between">
                                                             <div>
                                                                 <p className="font-bold text-zinc-800 flex items-center">{f.description}{getAuthorTag(f.author)}</p>
@@ -1778,7 +1888,13 @@
                                                     </div>
                                                     
                                                     <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
-                                                        {players.filter(p => !p.isPunished).map(p => {
+                                                        {players.length === 0 ? (
+                                                            <div className="bg-zinc-50 p-8 rounded-2xl border border-dashed border-zinc-200 text-center">
+                                                                <Icon name="users" size={32} className="mx-auto text-zinc-300 mb-2" />
+                                                                <p className="text-xs text-zinc-400 font-medium">Nenhum jogador cadastrado.</p>
+                                                                <a href="https://pogden280-blip.github.io/baba-gostosinho/" target="_blank" className="text-[10px] text-emerald-600 font-bold mt-2 block hover:underline">Link do App</a>
+                                                            </div>
+                                                        ) : players.filter(p => !p.isPunished).map(p => {
                                                             const isConfirmed = isPlayerConfirmed(p);
                                                             return (
                                                                 <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isConfirmed ? 'bg-emerald-50/50 border-emerald-200' : 'bg-zinc-50 border-zinc-100 opacity-70'}`}>
@@ -2181,6 +2297,7 @@
                                                 <div className="bg-zinc-50 p-8 rounded-2xl border border-dashed border-zinc-200 text-center">
                                                     <Icon name="users" size={32} className="mx-auto text-zinc-300 mb-2" />
                                                     <p className="text-xs text-zinc-400 font-medium">Nenhuma confirmação ainda.</p>
+                                                    <a href="https://pogden280-blip.github.io/baba-gostosinho/" target="_blank" className="text-[10px] text-emerald-600 font-bold mt-2 block hover:underline">Link do App</a>
                                                 </div>
                                             )}
                                         </section>
@@ -2194,10 +2311,58 @@
                             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 {showDaySummary ? (
                                     <div className="space-y-6">
-                                        <div className="text-center space-y-2">
-                                            <h2 className="text-2xl font-black text-zinc-900 tracking-tighter">RESUMO DO DIA</h2>
-                                            <p className="text-zinc-500 text-sm font-medium">Classificação e Elencos</p>
-                                        </div>
+                                         <div className="text-center space-y-2">
+                                             <h2 className="text-2xl font-black text-zinc-900 tracking-tighter">RESUMO DO DIA</h2>
+                                             <p className="text-zinc-500 text-sm font-medium">Classificação e Elencos</p>
+                                         </div>
+
+
+                                         {/* Destaques do Baba */}
+                                         <div className="grid grid-cols-2 gap-4">
+                                             <div className="bg-white p-5 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
+                                                 <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                                                     <Icon name="flame" size={14} className="text-orange-500" /> Artilharia
+                                                 </h3>
+                                                 <div className="space-y-3">
+                                                     {Object.values(calculateStats().playerStats)
+                                                         .filter(p => p.goals > 0)
+                                                         .sort((a, b) => b.goals - a.goals)
+                                                         .slice(0, 5)
+                                                         .map((p, i) => (
+                                                             <div key={i} className="flex items-center justify-between">
+                                                                 <span className="text-sm font-bold text-zinc-700">{p.name}</span>
+                                                                 <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-lg text-xs font-black">{p.goals} GOLS</span>
+                                                             </div>
+                                                         ))
+                                                     }
+                                                     {Object.values(calculateStats().playerStats).filter(p => p.goals > 0).length === 0 && (
+                                                         <p className="text-[10px] text-zinc-400 italic">Nenhum gol registrado.</p>
+                                                     )}
+                                                 </div>
+                                             </div>
+
+                                             <div className="bg-white p-5 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
+                                                 <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                                                     <Icon name="target" size={14} className="text-blue-500" /> Assistências
+                                                 </h3>
+                                                 <div className="space-y-3">
+                                                     {Object.values(calculateStats().playerStats)
+                                                         .filter(p => p.assists > 0)
+                                                         .sort((a, b) => b.assists - a.assists)
+                                                         .slice(0, 5)
+                                                         .map((p, i) => (
+                                                             <div key={i} className="flex items-center justify-between">
+                                                                 <span className="text-sm font-bold text-zinc-700">{p.name}</span>
+                                                                 <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-lg text-xs font-black">{p.assists} AST</span>
+                                                             </div>
+                                                         ))
+                                                     }
+                                                     {Object.values(calculateStats().playerStats).filter(p => p.assists > 0).length === 0 && (
+                                                         <p className="text-[10px] text-zinc-400 italic">Nenhuma assistência.</p>
+                                                     )}
+                                                 </div>
+                                             </div>
+                                         </div>
 
                                         <div className="bg-white rounded-3xl border border-zinc-200 shadow-xl overflow-hidden">
                                             <table className="w-full text-sm">
@@ -2211,7 +2376,7 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-zinc-100">
-                                                    {Object.entries(calculateStats())
+                                                    {Object.entries(calculateStats().teamStats)
                                                         .sort((a, b) => {
                                                             if (b[1].v !== a[1].v) return b[1].v - a[1].v;
                                                             return b[1].gp - a[1].gp;
@@ -2357,7 +2522,13 @@
                                                 <button onClick={endMatch} className="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
                                                     Encerrar Partida <Icon name="check-circle" size={20} />
                                                 </button>
-                                                {matchHistory.length > 0 && (
+                                                {matchHistory.length === 0 ? (
+                                             <div className="bg-zinc-50 p-8 rounded-2xl border border-dashed border-zinc-200 text-center">
+                                                 <Icon name="history" size={32} className="mx-auto text-zinc-300 mb-2" />
+                                                 <p className="text-xs text-zinc-400 font-medium">Nenhuma partida registrada hoje.</p>
+                                                 <a href="https://pogden280-blip.github.io/baba-gostosinho/" target="_blank" className="text-[10px] text-emerald-600 font-bold mt-2 block hover:underline">Link do App</a>
+                                             </div>
+                                         ) : (
                                                     <button onClick={endDay} className="w-full bg-amber-500 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
                                                         Encerrar Baba do Dia <Icon name="trophy" size={20} />
                                                     </button>
@@ -2396,7 +2567,13 @@
                                     <p className="text-4xl font-black">R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                 </div>
                                 <div className="space-y-2">
-                                    {finances.slice().reverse().map(f => (
+                                    {finances.length === 0 ? (
+                                        <div className="bg-zinc-50 p-8 rounded-2xl border border-dashed border-zinc-200 text-center">
+                                            <Icon name="dollar-sign" size={32} className="mx-auto text-zinc-300 mb-2" />
+                                            <p className="text-xs text-zinc-400 font-medium">Nenhuma transação registrada.</p>
+                                            <a href="https://pogden280-blip.github.io/baba-gostosinho/" target="_blank" className="text-[10px] text-emerald-600 font-bold mt-2 block hover:underline">Link do App</a>
+                                        </div>
+                                    ) : finances.slice().reverse().map(f => (
                                         <div key={f.id} className="bg-white p-4 rounded-xl border flex items-center justify-between">
                                             <div>
                                                 <p className="font-bold text-zinc-800 flex items-center">{f.description}{getAuthorTag(f.author)}</p>
@@ -2430,6 +2607,75 @@
                                 </button>
                             </div>
                         </nav>
+                    )}
+
+                    {/* Modal de Registro de Gol */}
+                    {showGoalModal && goalTeamIdx !== null && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+                            <motion.div 
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+                            >
+                                <div className="p-6 space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xl font-bold text-zinc-800">
+                                            {goalStep === 'scorer' ? 'Quem fez o gol?' : 'Quem deu a assistência?'}
+                                        </h3>
+                                        <button 
+                                            onClick={() => setShowGoalModal(false)} 
+                                            className="text-zinc-400 hover:text-zinc-600"
+                                        >
+                                            <Icon name="x" size={24} />
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto pr-1 custom-scrollbar">
+                                        {goalStep === 'scorer' ? (
+                                            teams[goalTeamIdx].players.map(p => (
+                                                <button
+                                                    key={p.id}
+                                                    onClick={() => handleGoalScored(p)}
+                                                    className="flex items-center gap-3 p-4 rounded-2xl bg-zinc-50 hover:bg-emerald-50 border border-zinc-100 hover:border-emerald-200 transition-all text-left"
+                                                >
+                                                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                                                        {p.name.charAt(0)}
+                                                    </div>
+                                                    <span className="font-bold text-zinc-700">{p.name}</span>
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={() => handleAssistMade(null)}
+                                                    className="flex items-center gap-3 p-4 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-100 hover:border-amber-200 transition-all text-left mb-2"
+                                                >
+                                                    <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+                                                        -
+                                                    </div>
+                                                    <span className="font-bold text-amber-700">Sem assistência</span>
+                                                </button>
+                                                {teams[goalTeamIdx].players
+                                                    .filter(p => p.id !== currentScorer?.id)
+                                                    .map(p => (
+                                                        <button
+                                                            key={p.id}
+                                                            onClick={() => handleAssistMade(p)}
+                                                            className="flex items-center gap-3 p-4 rounded-2xl bg-zinc-50 hover:bg-blue-50 border border-zinc-100 hover:border-blue-200 transition-all text-left"
+                                                        >
+                                                            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
+                                                                {p.name.charAt(0)}
+                                                            </div>
+                                                            <span className="font-bold text-zinc-700">{p.name}</span>
+                                                        </button>
+                                                    ))
+                                                }
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
                     )}
 
                     {/* Modal de Edição de Jogador */}
