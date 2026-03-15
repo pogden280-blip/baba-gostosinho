@@ -154,6 +154,8 @@
             const [goalStep, setGoalStep] = useState('scorer'); // 'scorer', 'assistant'
             const [currentScorer, setCurrentScorer] = useState(null);
             const [currentMatchGoals, setCurrentMatchGoals] = useState([]); // Array of { scorerId, scorerName, assistantId, assistantName }
+            const [monthlyStats, setMonthlyStats] = useState({}); // { playerId: { name, goals, assists } }
+            const [babaCount, setBabaCount] = useState(0); // 0 to 4
 
             // Carregar dados do JSONbin
             useEffect(() => {
@@ -198,6 +200,8 @@
                             setAccessHistory(rawAccessHistory);
                             setMensalidadeValue(rawMensalidade);
                             setDiariaValue(rawDiaria);
+                            setMonthlyStats(data.record.monthlyStats || {});
+                            setBabaCount(data.record.babaCount || 0);
                             
                             // Always filter confirmed list to only include paid players
                             let finalConfirmed = rawConfirmed.filter(id => {
@@ -253,7 +257,7 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory, newCurrentLoans, newLoanHistory) => {
+            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory, newCurrentLoans, newLoanHistory, newMonthlyStats, newBabaCount) => {
                 try {
                     // Pruning logic to save space in JSONbin
                     const prunedFinances = (newFinances !== undefined ? newFinances : finances).slice(-200); // Keep last 200 financial records
@@ -267,6 +271,8 @@
                     const mensalidadeToSave = newMensalidade !== undefined ? newMensalidade : mensalidadeValue;
                     const diariaToSave = newDiaria !== undefined ? newDiaria : diariaValue;
                     const absentToSave = newAbsentIds !== undefined ? newAbsentIds : absentCommissionIds;
+                    const monthlyStatsToSave = newMonthlyStats !== undefined ? newMonthlyStats : monthlyStats;
+                    const babaCountToSave = newBabaCount !== undefined ? newBabaCount : babaCount;
                     
                     const response = await fetch(API_URL, {
                         method: 'PUT',
@@ -285,7 +291,9 @@
                             mensalidadeValue: mensalidadeToSave,
                             diariaValue: diariaToSave,
                             absentCommissionIds: absentToSave,
-                            accessHistory: prunedAccessHistory
+                            accessHistory: prunedAccessHistory,
+                            monthlyStats: monthlyStatsToSave,
+                            babaCount: babaCountToSave
                         })
                     });
 
@@ -945,11 +953,12 @@
                 // Jogadores do time de origem que ainda não foram emprestados neste ciclo
                 const alreadyLoanedIds = loanedPlayersIdsByTeam[sourceTeamIdx] || [];
                 let availablePlayers = sourceTeam.players.filter(p => !alreadyLoanedIds.includes(p.id));
+                let baseLoanedIds = alreadyLoanedIds;
 
                 // Se todos já foram emprestados, reinicia o ciclo para este time
                 if (availablePlayers.length === 0) {
                     availablePlayers = [...sourceTeam.players];
-                    setLoanedPlayersIdsByTeam(prev => ({ ...prev, [sourceTeamIdx]: [] }));
+                    baseLoanedIds = [];
                 }
 
                 // Seleciona um jogador (o primeiro disponível)
@@ -958,7 +967,7 @@
 
                 // Atualiza empréstimos atuais e histórico de empréstimos
                 const newLoans = [...currentLoans, { fromTeamIdx: sourceTeamIdx, toTeamIdx: targetTeamIdx, player: playerToLoan }];
-                const newLoanHistory = { ...loanedPlayersIdsByTeam, [sourceTeamIdx]: [...(loanedPlayersIdsByTeam[sourceTeamIdx] || []), playerToLoan.id] };
+                const newLoanHistory = { ...loanedPlayersIdsByTeam, [sourceTeamIdx]: [...baseLoanedIds, playerToLoan.id] };
                 
                 setCurrentLoans(newLoans);
                 setLoanedPlayersIdsByTeam(newLoanHistory);
@@ -973,6 +982,23 @@
                     alert('Nenhuma partida registrada hoje!');
                     return;
                 }
+
+                const { playerStats } = calculateStats();
+                const newMonthlyStats = { ...monthlyStats };
+                
+                Object.entries(playerStats).forEach(([id, stats]) => {
+                    if (stats.goals > 0 || stats.assists > 0) {
+                        if (!newMonthlyStats[id]) {
+                            newMonthlyStats[id] = { name: stats.name, goals: 0, assists: 0 };
+                        }
+                        newMonthlyStats[id].goals += stats.goals;
+                        newMonthlyStats[id].assists += stats.assists;
+                    }
+                });
+
+                const newBabaCount = babaCount + 1;
+                setMonthlyStats(newMonthlyStats);
+                setBabaCount(newBabaCount);
                 
                 // Lançar receitas dos diaristas pagos e convidados
                 const newFinances = [...finances];
@@ -1029,10 +1055,22 @@
                 setGuests([]); // Limpa convidados ao encerrar o dia
 
                 setShowDaySummary(true);
-                saveData(updatedPlayers, newFinances, undefined, undefined, true, [], []);
+                saveData(updatedPlayers, newFinances, undefined, undefined, true, [], [], undefined, undefined, undefined, undefined, undefined, undefined, newMonthlyStats, newBabaCount);
             };
 
             const resetDay = () => {
+                let nextMonthlyStats = monthlyStats;
+                let nextBabaCount = babaCount;
+
+                if (babaCount >= 4) {
+                    if (confirm('O ciclo de 4 babas foi concluído. Deseja reiniciar o ranking mensal?')) {
+                        nextMonthlyStats = {};
+                        nextBabaCount = 0;
+                        setMonthlyStats({});
+                        setBabaCount(0);
+                    }
+                }
+
                 setMatchHistory([]);
                 setTeams([]);
                 setGuests([]);
@@ -1065,7 +1103,7 @@
 
                 const defaultConfirmed = updatedPlayers.filter(p => ((p.type === 'mensalista' && p.paymentStatus === 'pago') || p.role === 'commission') && !p.isPunished).map(p => p.id);
                 setConfirmedPlayerIds(defaultConfirmed);
-                saveData(updatedPlayers, finances, null, [], false, [], defaultConfirmed);
+                saveData(updatedPlayers, finances, null, [], false, [], defaultConfirmed, undefined, undefined, undefined, undefined, [], {}, nextMonthlyStats, nextBabaCount);
                 setCurrentTab('home');
             };
 
@@ -2363,6 +2401,65 @@
                                                  </div>
                                              </div>
                                          </div>
+
+                                        {/* Ranking Mensal (Ciclo de 4 Babas) */}
+                                        <div className="bg-zinc-900 p-6 rounded-3xl shadow-xl space-y-6 mb-6">
+                                            <div className="flex items-center justify-between">
+                                                <div className="space-y-1">
+                                                    <h3 className="text-white font-black text-lg tracking-tighter uppercase">Ranking Mensal</h3>
+                                                    <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-widest">Ciclo de 4 Babas</p>
+                                                </div>
+                                                <div className="bg-zinc-800 px-3 py-1 rounded-full border border-zinc-700">
+                                                    <span className="text-emerald-400 text-[10px] font-black uppercase tracking-widest">Baba {babaCount} de 4</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-4">
+                                                    <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                        <Icon name="flame" size={12} className="text-orange-500" /> Artilharia
+                                                     </h4>
+                                                    <div className="space-y-2">
+                                                        {Object.values(monthlyStats)
+                                                            .filter(p => p.goals > 0)
+                                                            .sort((a, b) => b.goals - a.goals)
+                                                            .slice(0, 5)
+                                                            .map((p, i) => (
+                                                                <div key={i} className="flex items-center justify-between">
+                                                                    <span className="text-xs font-bold text-zinc-300 truncate max-w-[80px]">{p.name}</span>
+                                                                    <span className="text-orange-400 text-xs font-black">{p.goals}</span>
+                                                                </div>
+                                                            ))
+                                                        }
+                                                        {Object.values(monthlyStats).filter(p => p.goals > 0).length === 0 && (
+                                                            <p className="text-[10px] text-zinc-600 italic">Aguardando dados...</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-4">
+                                                    <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                        <Icon name="target" size={12} className="text-blue-500" /> Assistências
+                                                    </h4>
+                                                    <div className="space-y-2">
+                                                        {Object.values(monthlyStats)
+                                                            .filter(p => p.assists > 0)
+                                                            .sort((a, b) => b.assists - a.assists)
+                                                            .slice(0, 5)
+                                                            .map((p, i) => (
+                                                                <div key={i} className="flex items-center justify-between">
+                                                                    <span className="text-xs font-bold text-zinc-300 truncate max-w-[80px]">{p.name}</span>
+                                                                    <span className="text-blue-400 text-xs font-black">{p.assists}</span>
+                                                                </div>
+                                                            ))
+                                                        }
+                                                        {Object.values(monthlyStats).filter(p => p.assists > 0).length === 0 && (
+                                                            <p className="text-[10px] text-zinc-600 italic">Aguardando dados...</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
 
                                         <div className="bg-white rounded-3xl border border-zinc-200 shadow-xl overflow-hidden">
                                             <table className="w-full text-sm">
