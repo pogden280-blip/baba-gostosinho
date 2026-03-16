@@ -16,7 +16,7 @@
     <!-- Framer Motion -->
     <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
     <!-- html2canvas -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -1318,31 +1318,48 @@
 
             const captureAndShare = async (elementId, fileName) => {
                 const element = document.getElementById(elementId);
-                if (!element) return;
+                if (!element) {
+                    console.error('Elemento não encontrado:', elementId);
+                    return;
+                }
                 
+                const h2c = window.html2canvas || (typeof html2canvas !== 'undefined' ? html2canvas : null);
+                if (!h2c) {
+                    alert('O sistema de imagem ainda está carregando. Por favor, tente novamente em instantes.');
+                    return;
+                }
+
                 try {
-                    const canvas = await window.html2canvas(element, {
-                        backgroundColor: '#f8fafc',
-                        scale: 2,
+                    // Pequeno delay para garantir que o DOM está pronto e ícones renderizados
+                    await new Promise(resolve => setTimeout(resolve, 100));
+
+                    const canvas = await h2c(element, {
+                        backgroundColor: elementId === 'ranking-mensal' ? '#18181b' : '#f8fafc',
+                        scale: window.devicePixelRatio || 2,
                         logging: false,
                         useCORS: true,
-                        windowWidth: element.scrollWidth,
-                        windowHeight: element.scrollHeight
+                        allowTaint: true,
+                        scrollY: -window.scrollY, // Fix para capturar corretamente se houver scroll
                     });
                     
                     const image = canvas.toDataURL('image/png');
                     
                     if (navigator.share && navigator.canShare) {
-                        const blob = await (await fetch(image)).blob();
-                        const file = new File([blob], `${fileName}.png`, { type: 'image/png' });
-                        
-                        if (navigator.canShare({ files: [file] })) {
-                            await navigator.share({
-                                files: [file],
-                                title: fileName,
-                                text: `Confira o ${fileName} do Baba Gostosinho!`
-                            });
-                        } else {
+                        try {
+                            const blob = await (await fetch(image)).blob();
+                            const file = new File([blob], `${fileName}.png`, { type: 'image/png' });
+                            
+                            if (navigator.canShare({ files: [file] })) {
+                                await navigator.share({
+                                    files: [file],
+                                    title: fileName,
+                                    text: `Confira o ${fileName} do Baba Gostosinho!`
+                                });
+                            } else {
+                                downloadImage(image, fileName);
+                            }
+                        } catch (shareError) {
+                            console.warn('Erro no compartilhamento nativo, tentando download:', shareError);
                             downloadImage(image, fileName);
                         }
                     } else {
@@ -1350,7 +1367,7 @@
                     }
                 } catch (error) {
                     console.error('Erro ao capturar imagem:', error);
-                    alert('Não foi possível gerar a imagem.');
+                    alert('Não foi possível gerar a imagem. Tente tirar um print da tela.');
                 }
             };
 
