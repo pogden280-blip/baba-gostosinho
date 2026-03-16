@@ -1316,7 +1316,7 @@
                 }
             };
 
-            const captureAndShare = async (elementId, fileName) => {
+            const captureAndShare = async (elementId, fileName, e) => {
                 const element = document.getElementById(elementId);
                 if (!element) {
                     console.error('Elemento não encontrado:', elementId);
@@ -1330,44 +1330,62 @@
                 }
 
                 try {
+                    // Feedback visual de que está processando
+                    const btn = e?.currentTarget || e?.target;
+                    if (btn && btn.tagName === 'BUTTON') {
+                        btn.disabled = true;
+                    }
+
                     // Pequeno delay para garantir que o DOM está pronto e ícones renderizados
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise(resolve => setTimeout(resolve, 150));
 
                     const canvas = await h2c(element, {
                         backgroundColor: elementId === 'ranking-mensal' ? '#18181b' : '#f8fafc',
-                        scale: window.devicePixelRatio || 2,
+                        scale: 2,
                         logging: false,
                         useCORS: true,
                         allowTaint: true,
-                        scrollY: -window.scrollY, // Fix para capturar corretamente se houver scroll
+                        scrollY: -window.scrollY,
                     });
                     
                     const image = canvas.toDataURL('image/png');
                     
-                    if (navigator.share && navigator.canShare) {
+                    if (btn && btn.tagName === 'BUTTON') {
+                        btn.disabled = false;
+                    }
+
+                    // Tenta compartilhar usando a API nativa
+                    if (navigator.share) {
                         try {
-                            const blob = await (await fetch(image)).blob();
+                            const response = await fetch(image);
+                            const blob = await response.blob();
                             const file = new File([blob], `${fileName}.png`, { type: 'image/png' });
-                            
-                            if (navigator.canShare({ files: [file] })) {
+
+                            // Verifica se o navegador suporta compartilhar este arquivo específico
+                            if (navigator.canShare && navigator.canShare({ files: [file] })) {
                                 await navigator.share({
                                     files: [file],
                                     title: fileName,
                                     text: `Confira o ${fileName} do Baba Gostosinho!`
                                 });
-                            } else {
-                                downloadImage(image, fileName);
+                                return; // Sucesso no compartilhamento
                             }
                         } catch (shareError) {
-                            console.warn('Erro no compartilhamento nativo, tentando download:', shareError);
-                            downloadImage(image, fileName);
+                            console.warn('Erro ao tentar compartilhar arquivo:', shareError);
                         }
-                    } else {
-                        downloadImage(image, fileName);
                     }
+
+                    // Se chegou aqui, o compartilhamento nativo falhou ou não é suportado para arquivos
+                    downloadImage(image, fileName);
+                    alert('Imagem gerada! Como seu navegador não suporta o envio direto de arquivos, a imagem foi baixada para sua galeria. Agora você pode anexá-la no WhatsApp.');
+                    
                 } catch (error) {
                     console.error('Erro ao capturar imagem:', error);
                     alert('Não foi possível gerar a imagem. Tente tirar um print da tela.');
+                    const btn = e?.currentTarget || e?.target;
+                    if (btn && btn.tagName === 'BUTTON') {
+                        btn.disabled = false;
+                    }
                 }
             };
 
@@ -2361,7 +2379,7 @@
                                     <div className="flex gap-2">
                                         {teams.length > 0 && (
                                             <button 
-                                                onClick={() => captureAndShare('teams-table', 'Sorteio-Baba')}
+                                                onClick={(e) => captureAndShare('teams-table', 'Sorteio-Baba', e)}
                                                 className="p-2 bg-white border border-zinc-200 rounded-xl text-zinc-600 hover:bg-zinc-50 transition-colors"
                                                 title="Compartilhar como Imagem"
                                             >
@@ -2615,7 +2633,7 @@
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <button 
-                                                        onClick={() => captureAndShare('ranking-mensal', 'Ranking-Mensal')}
+                                                        onClick={(e) => captureAndShare('ranking-mensal', 'Ranking-Mensal', e)}
                                                         className="p-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-colors"
                                                         title="Compartilhar como Imagem"
                                                     >
@@ -2735,7 +2753,7 @@
                                                 Compartilhar Resultado <Icon name="share-2" size={20} />
                                             </button>
                                             <button 
-                                                onClick={() => captureAndShare('resumo-dia', 'Resumo-Baba')}
+                                                onClick={(e) => captureAndShare('resumo-dia', 'Resumo-Baba', e)}
                                                 className="w-full bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2"
                                             >
                                                 Compartilhar como Imagem <Icon name="image" size={20} />
