@@ -1318,74 +1318,75 @@
 
             const captureAndShare = async (elementId, fileName, e) => {
                 const element = document.getElementById(elementId);
-                if (!element) {
-                    console.error('Elemento não encontrado:', elementId);
-                    return;
-                }
+                if (!element) return;
                 
                 const h2c = window.html2canvas || (typeof html2canvas !== 'undefined' ? html2canvas : null);
                 if (!h2c) {
-                    alert('O sistema de imagem ainda está carregando. Por favor, tente novamente em instantes.');
+                    alert('O sistema de imagem ainda está carregando...');
                     return;
                 }
 
-                try {
-                    // Feedback visual de que está processando
-                    const btn = e?.currentTarget || e?.target;
-                    if (btn && btn.tagName === 'BUTTON') {
-                        btn.disabled = true;
-                    }
+                const btn = e?.currentTarget || e?.target;
+                if (btn && btn.tagName === 'BUTTON') btn.disabled = true;
 
-                    // Pequeno delay para garantir que o DOM está pronto e ícones renderizados
-                    await new Promise(resolve => setTimeout(resolve, 150));
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 200));
 
                     const canvas = await h2c(element, {
                         backgroundColor: elementId === 'ranking-mensal' ? '#18181b' : '#f8fafc',
                         scale: 2,
-                        logging: false,
                         useCORS: true,
                         allowTaint: true,
                         scrollY: -window.scrollY,
                     });
                     
-                    const image = canvas.toDataURL('image/png');
-                    
-                    if (btn && btn.tagName === 'BUTTON') {
-                        btn.disabled = false;
-                    }
+                    const dataUrl = canvas.toDataURL('image/png');
+                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-                    // Tenta compartilhar usando a API nativa
                     if (navigator.share) {
                         try {
-                            const response = await fetch(image);
+                            const response = await fetch(dataUrl);
                             const blob = await response.blob();
                             const file = new File([blob], `${fileName}.png`, { type: 'image/png' });
 
-                            // Verifica se o navegador suporta compartilhar este arquivo específico
-                            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                                await navigator.share({
-                                    files: [file],
-                                    title: fileName,
-                                    text: `Confira o ${fileName} do Baba Gostosinho!`
-                                });
-                                return; // Sucesso no compartilhamento
+                            // No iOS, compartilhar apenas o arquivo aumenta a chance de aparecer "Salvar Imagem"
+                            const shareData = {
+                                files: [file]
+                            };
+
+                            if (navigator.canShare && navigator.canShare(shareData)) {
+                                await navigator.share(shareData);
+                                if (btn && btn.tagName === 'BUTTON') btn.disabled = false;
+                                return;
                             }
-                        } catch (shareError) {
-                            console.warn('Erro ao tentar compartilhar arquivo:', shareError);
+                        } catch (err) {
+                            console.warn('Erro no compartilhamento nativo:', err);
                         }
                     }
 
-                    // Se chegou aqui, o compartilhamento nativo falhou ou não é suportado para arquivos
-                    downloadImage(image, fileName);
-                    alert('Imagem gerada! Como seu navegador não suporta o envio direto de arquivos, a imagem foi baixada para sua galeria. Agora você pode anexá-la no WhatsApp.');
-                    
-                } catch (error) {
-                    console.error('Erro ao capturar imagem:', error);
-                    alert('Não foi possível gerar a imagem. Tente tirar um print da tela.');
-                    const btn = e?.currentTarget || e?.target;
-                    if (btn && btn.tagName === 'BUTTON') {
-                        btn.disabled = false;
+                    // Fallback para iOS se o share falhar: Abrir em nova aba para "Salvar Imagem"
+                    if (isIOS) {
+                        const newTab = window.open();
+                        if (newTab) {
+                            newTab.document.write(`
+                                <body style="margin:0; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; color:#fff; font-family:sans-serif;">
+                                    <p style="margin-bottom:20px; font-weight:bold; text-align:center; padding:0 20px;">Pressione e segure na imagem abaixo e escolha "Salvar em Fotos" para enviar à Galeria.</p>
+                                    <img src="${dataUrl}" style="max-width:100%; max-height:80vh; object-fit:contain;" />
+                                    <button onclick="window.close()" style="margin-top:20px; background:#fff; color:#000; border:none; padding:10px 20px; border-radius:10px; font-weight:bold;">Voltar ao App</button>
+                                </body>
+                            `);
+                        } else {
+                            alert('Por favor, permita pop-ups para salvar a imagem na galeria.');
+                        }
+                    } else {
+                        downloadImage(dataUrl, fileName);
+                        alert('Imagem baixada! Agora você pode compartilhá-la no WhatsApp.');
                     }
+                } catch (error) {
+                    console.error('Erro:', error);
+                    alert('Erro ao gerar imagem. Tente tirar um print da tela.');
+                } finally {
+                    if (btn && btn.tagName === 'BUTTON') btn.disabled = false;
                 }
             };
 
