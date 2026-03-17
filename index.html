@@ -161,6 +161,15 @@
             const [currentMatchGoals, setCurrentMatchGoals] = useState([]); // Array of { scorerId, scorerName, assistantId, assistantName }
             const [monthlyStats, setMonthlyStats] = useState({}); // { playerId: { name, goals, assists } }
             const [babaCount, setBabaCount] = useState(0); // 0 to 4
+            const [highlights, setHighlights] = useState({
+                artilheiro: { name: '', photo: '', stats: '', message: '' },
+                garcom: { name: '', photo: '', stats: '', message: '' },
+                goleiro: { name: '', photo: '', stats: '', message: '' },
+                timeDaSemana: { name: '', photo: '', stats: '', message: '' }
+            });
+            const [showHighlightModal, setShowHighlightModal] = useState(null); // 'artilheiro', 'garcom', 'goleiro' or null
+            const [tempHighlight, setTempHighlight] = useState({ name: '', stats: '', message: '' });
+            const [isUploading, setIsUploading] = useState(false);
 
             // Carregar dados do JSONbin
             useEffect(() => {
@@ -207,6 +216,12 @@
                             setDiariaValue(rawDiaria);
                             setMonthlyStats(data.record.monthlyStats || {});
                             setBabaCount(data.record.babaCount || 0);
+                            setHighlights(data.record.highlights || {
+                                artilheiro: { name: '', photo: '', stats: '', message: '' },
+                                garcom: { name: '', photo: '', stats: '', message: '' },
+                                goleiro: { name: '', photo: '', stats: '', message: '' },
+                                timeDaSemana: { name: '', photo: '', stats: '', message: '' }
+                            });
                             
                             // Always filter confirmed list to only include paid players
                             let finalConfirmed = rawConfirmed.filter(id => {
@@ -262,7 +277,7 @@
             }, []);
 
             // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory, newCurrentLoans, newLoanHistory, newMonthlyStats, newBabaCount) => {
+            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory, newCurrentLoans, newLoanHistory, newMonthlyStats, newBabaCount, newHighlights) => {
                 try {
                     // Pruning logic to save space in JSONbin
                     const prunedFinances = (newFinances !== undefined ? newFinances : finances).slice(-200); // Keep last 200 financial records
@@ -295,6 +310,7 @@
                     const absentToSave = newAbsentIds !== undefined ? newAbsentIds : absentCommissionIds;
                     const monthlyStatsToSave = newMonthlyStats !== undefined ? newMonthlyStats : monthlyStats;
                     const babaCountToSave = newBabaCount !== undefined ? newBabaCount : babaCount;
+                    const highlightsToSave = newHighlights !== undefined ? newHighlights : highlights;
                     
                     const response = await fetch(API_URL, {
                         method: 'PUT',
@@ -315,7 +331,8 @@
                             absentCommissionIds: absentToSave,
                             accessHistory: prunedAccessHistory,
                             monthlyStats: monthlyStatsToSave,
-                            babaCount: babaCountToSave
+                            babaCount: babaCountToSave,
+                            highlights: highlightsToSave
                         })
                     });
 
@@ -342,6 +359,72 @@
                     if (timerRef.current) clearInterval(timerRef.current);
                 };
             }, [isTimerRunning]);
+
+            const uploadToCloudinary = async (file) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', 'xctfsuff');
+                try {
+                    const response = await fetch(`https://api.cloudinary.com/v1_1/douqnbfzz/image/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+                    if (data.secure_url) {
+                        return data.secure_url;
+                    } else {
+                        throw new Error(data.error?.message || 'Erro no upload');
+                    }
+                } catch (error) {
+                    console.error('Erro Cloudinary:', error);
+                    alert('Erro ao subir imagem: ' + error.message);
+                    return null;
+                }
+            };
+
+            useEffect(() => {
+                if (showHighlightModal) {
+                    setTempHighlight({
+                        name: highlights[showHighlightModal].name,
+                        stats: highlights[showHighlightModal].stats,
+                        message: highlights[showHighlightModal].message
+                    });
+                }
+            }, [showHighlightModal]);
+
+            const handleHighlightPhotoUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                setIsUploading(true);
+                const url = await uploadToCloudinary(file);
+                setIsUploading(false);
+                
+                if (url) {
+                    const newHighlights = {
+                        ...highlights,
+                        [showHighlightModal]: {
+                            ...highlights[showHighlightModal],
+                            photo: url
+                        }
+                    };
+                    setHighlights(newHighlights);
+                    saveData(players, finances, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, newHighlights);
+                }
+            };
+
+            const saveHighlightData = () => {
+                const newHighlights = {
+                    ...highlights,
+                    [showHighlightModal]: {
+                        ...highlights[showHighlightModal],
+                        ...tempHighlight
+                    }
+                };
+                setHighlights(newHighlights);
+                saveData(players, finances, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, newHighlights);
+                setShowHighlightModal(null);
+            };
 
             const formatTime = (seconds) => {
                 const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -2579,7 +2662,7 @@
 
 
                                          {/* Destaques do Baba */}
-                                         <div className="grid grid-cols-2 gap-4">
+                                         <div className="grid grid-cols-2 gap-4 pb-6 border-b border-zinc-100">
                                              <div className="bg-white p-5 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
                                                  <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
                                                      <Icon name="flame" size={14} className="text-orange-500" /> Artilharia
@@ -2625,75 +2708,7 @@
                                              </div>
                                          </div>
 
-                                        {/* Ranking Mensal (Ciclo de 4 Babas) */}
-                                        <div id="ranking-mensal" className="bg-zinc-900 p-6 rounded-3xl shadow-xl space-y-6 mb-6">
-                                            <div className="flex items-center justify-between">
-                                                <div className="space-y-1">
-                                                    <h3 className="text-white font-black text-lg tracking-tighter uppercase">Ranking Mensal</h3>
-                                                    <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-widest">Ciclo de 4 Babas</p>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <button 
-                                                        onClick={(e) => captureAndShare('ranking-mensal', 'Ranking-Mensal', e)}
-                                                        className="p-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-colors"
-                                                        title="Compartilhar como Imagem"
-                                                    >
-                                                        <Icon name="image" size={16} />
-                                                    </button>
-                                                    <div className="bg-zinc-800 px-3 py-1 rounded-full border border-zinc-700">
-                                                        <span className="text-emerald-400 text-[10px] font-black uppercase tracking-widest">Baba {babaCount} de 4</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-4">
-                                                    <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                                        <Icon name="flame" size={12} className="text-orange-500" /> Artilharia
-                                                     </h4>
-                                                    <div className="space-y-2">
-                                                        {Object.values(monthlyStats)
-                                                            .filter(p => p.goals > 0)
-                                                            .sort((a, b) => b.goals - a.goals)
-                                                            .slice(0, 5)
-                                                            .map((p, i) => (
-                                                                <div key={i} className="flex items-center justify-between">
-                                                                    <span className="text-xs font-bold text-zinc-300 truncate max-w-[80px]">{p.name}</span>
-                                                                    <span className="text-orange-400 text-xs font-black">{p.goals}</span>
-                                                                </div>
-                                                            ))
-                                                        }
-                                                        {Object.values(monthlyStats).filter(p => p.goals > 0).length === 0 && (
-                                                            <p className="text-[10px] text-zinc-600 italic">Aguardando dados...</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-4">
-                                                    <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                                        <Icon name="target" size={12} className="text-blue-500" /> Assistências
-                                                    </h4>
-                                                    <div className="space-y-2">
-                                                        {Object.values(monthlyStats)
-                                                            .filter(p => p.assists > 0)
-                                                            .sort((a, b) => b.assists - a.assists)
-                                                            .slice(0, 5)
-                                                            .map((p, i) => (
-                                                                <div key={i} className="flex items-center justify-between">
-                                                                    <span className="text-xs font-bold text-zinc-300 truncate max-w-[80px]">{p.name}</span>
-                                                                    <span className="text-blue-400 text-xs font-black">{p.assists}</span>
-                                                                </div>
-                                                            ))
-                                                        }
-                                                        {Object.values(monthlyStats).filter(p => p.assists > 0).length === 0 && (
-                                                            <p className="text-[10px] text-zinc-600 italic">Aguardando dados...</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-white rounded-3xl border border-zinc-200 shadow-xl overflow-hidden">
+                                         <div className="bg-white rounded-3xl border border-zinc-200 shadow-xl overflow-hidden">
                                             <table className="w-full text-sm">
                                                 <thead className="bg-zinc-50 border-b border-zinc-200">
                                                     <tr>
@@ -2922,6 +2937,155 @@
                                 </div>
                             </div>
                         )}
+
+                        {/* Ranking Tab */}
+                        {currentTab === 'ranking' && (
+                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-3xl font-black text-zinc-900 tracking-tighter">HALL DA FAMA</h2>
+                                    <p className="text-zinc-500 text-sm font-medium">Destaques do Mês</p>
+                                </div>
+
+                                {/* Galeria de Destaques */}
+                                <div className="grid grid-cols-1 gap-6">
+                                    {['timeDaSemana', 'artilheiro', 'garcom', 'goleiro'].map((type) => {
+                                        const h = highlights[type];
+                                        const titles = {
+                                            timeDaSemana: 'Time da Semana',
+                                            artilheiro: 'Artilheiro do Mês',
+                                            garcom: 'Garçom do Mês',
+                                            goleiro: 'Goleiro do Mês'
+                                        };
+                                        const icons = {
+                                            timeDaSemana: <Icon name="users" size={20} className="text-indigo-500" />,
+                                            artilheiro: <Icon name="flame" size={20} className="text-orange-500" />,
+                                            garcom: <Icon name="target" size={20} className="text-blue-500" />,
+                                            goleiro: <Icon name="shield" size={20} className="text-emerald-500" />
+                                        };
+
+                                        return (
+                                            <motion.div 
+                                                key={type}
+                                                whileHover={{ y: -5 }}
+                                                className="bg-white rounded-[2.5rem] border-4 border-zinc-100 shadow-xl overflow-hidden"
+                                            >
+                                                <div className="p-6 space-y-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            {icons[type]}
+                                                            <h3 className="text-lg font-black text-zinc-900 uppercase tracking-tighter">{titles[type]}</h3>
+                                                        </div>
+                                                        {isAdminMode && (
+                                                            <button 
+                                                                onClick={() => setShowHighlightModal(type)}
+                                                                className="p-2 bg-zinc-100 rounded-full text-zinc-500 hover:bg-zinc-200"
+                                                            >
+                                                                <Icon name="edit-3" size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="relative aspect-square rounded-3xl overflow-hidden bg-zinc-100 border-2 border-zinc-50">
+                                                        {h.photo ? (
+                                                            <img src={h.photo} alt={h.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex flex-col items-center justify-center text-zinc-300">
+                                                                <Icon name="user" size={64} />
+                                                                <p className="text-[10px] font-bold uppercase mt-2">Aguardando Foto</p>
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 pt-12">
+                                                            <p className="text-white text-2xl font-black tracking-tighter">{h.name || '---'}</p>
+                                                            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest">{h.stats || '---'}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {h.message && (
+                                                        <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100 italic text-zinc-600 text-sm text-center">
+                                                            "{h.message}"
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </motion.div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Ranking Mensal (Ciclo de 4 Babas) */}
+                                <div id="ranking-mensal" className="bg-zinc-900 p-8 rounded-[2.5rem] shadow-2xl space-y-8">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <h3 className="text-white font-black text-2xl tracking-tighter uppercase">Ranking Mensal</h3>
+                                            <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Ciclo de 4 Babas</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button 
+                                                onClick={(e) => captureAndShare('ranking-mensal', 'Ranking-Mensal', e)}
+                                                className="p-3 bg-zinc-800 border border-zinc-700 rounded-2xl text-zinc-400 hover:text-white transition-colors"
+                                                title="Compartilhar como Imagem"
+                                            >
+                                                <Icon name="image" size={20} />
+                                            </button>
+                                            <div className="bg-zinc-800 px-4 py-2 rounded-full border border-zinc-700">
+                                                <span className="text-emerald-400 text-xs font-black uppercase tracking-widest">Baba {babaCount} de 4</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-8">
+                                        <div className="space-y-6">
+                                            <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                <Icon name="flame" size={16} className="text-orange-500" /> Artilharia do Mês
+                                             </h4>
+                                            <div className="space-y-3">
+                                                {Object.values(monthlyStats)
+                                                    .filter(p => p.goals > 0)
+                                                    .sort((a, b) => b.goals - a.goals)
+                                                    .slice(0, 10)
+                                                    .map((p, i) => (
+                                                        <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
+                                                                <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                            </div>
+                                                            <span className="text-orange-400 font-black">{p.goals} GOLS</span>
+                                                        </div>
+                                                    ))
+                                                }
+                                                {Object.values(monthlyStats).filter(p => p.goals > 0).length === 0 && (
+                                                    <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                <Icon name="target" size={16} className="text-blue-500" /> Assistências do Mês
+                                            </h4>
+                                            <div className="space-y-3">
+                                                {Object.values(monthlyStats)
+                                                    .filter(p => p.assists > 0)
+                                                    .sort((a, b) => b.assists - a.assists)
+                                                    .slice(0, 10)
+                                                    .map((p, i) => (
+                                                        <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
+                                                                <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                            </div>
+                                                            <span className="text-blue-400 font-black">{p.assists} AST</span>
+                                                        </div>
+                                                    ))
+                                                }
+                                                {Object.values(monthlyStats).filter(p => p.assists > 0).length === 0 && (
+                                                    <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </main>
 
                     {/* Bottom Navigation */}
@@ -2935,6 +3099,10 @@
                                 <button onClick={() => setCurrentTab('teams')} className={`flex flex-col items-center gap-1 ${currentTab === 'teams' ? 'text-emerald-600' : 'text-zinc-400'}`}>
                                     <Icon name="shuffle" size={24} />
                                     <span className="text-[10px] font-bold uppercase">Times</span>
+                                </button>
+                                <button onClick={() => setCurrentTab('ranking')} className={`flex flex-col items-center gap-1 ${currentTab === 'ranking' ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                                    <Icon name="award" size={24} />
+                                    <span className="text-[10px] font-bold uppercase">Ranking</span>
                                 </button>
                                 <button onClick={() => setCurrentTab('match')} className={`flex flex-col items-center gap-1 ${currentTab === 'match' ? 'text-emerald-600' : 'text-zinc-400'}`}>
                                     <Icon name="trophy" size={24} />
@@ -3464,6 +3632,103 @@
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {/* Highlight Edit Modal */}
+                    {showHighlightModal && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+                            <motion.div 
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl"
+                            >
+                                <div className="p-8 space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xl font-black text-zinc-900 uppercase tracking-tighter">Editar Destaque</h3>
+                                        <button onClick={() => setShowHighlightModal(null)} className="text-zinc-400 hover:text-zinc-600">
+                                            <Icon name="x" size={24} />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Foto do Craque</label>
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-16 h-16 rounded-2xl bg-zinc-100 overflow-hidden border-2 border-zinc-50 flex-shrink-0">
+                                                    {highlights[showHighlightModal].photo ? (
+                                                        <img src={highlights[showHighlightModal].photo} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-zinc-300">
+                                                            <Icon name="user" size={24} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <label className={`w-full py-3 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 cursor-pointer transition-all ${isUploading ? 'bg-zinc-50 border-zinc-200 text-zinc-400' : 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100'}`}>
+                                                        <input type="file" className="hidden" accept="image/*" onChange={handleHighlightPhotoUpload} disabled={isUploading} />
+                                                        {isUploading ? (
+                                                            <>
+                                                                <div className="w-4 h-4 border-2 border-zinc-300 border-t-zinc-500 rounded-full animate-spin"></div>
+                                                                <span className="text-xs font-bold">Subindo...</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Icon name="camera" size={18} />
+                                                                <span className="text-xs font-bold">Trocar Foto</span>
+                                                            </>
+                                                        )}
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                                                {showHighlightModal === 'timeDaSemana' ? 'Nome do Time' : 'Nome do Jogador'}
+                                            </label>
+                                            <input 
+                                                type="text"
+                                                value={tempHighlight.name}
+                                                onChange={(e) => setTempHighlight({...tempHighlight, name: e.target.value})}
+                                                placeholder={showHighlightModal === 'timeDaSemana' ? "Ex: Time do Baba" : "Ex: Neymar Jr"}
+                                                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all font-bold"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                                                {showHighlightModal === 'timeDaSemana' ? 'Resultado/Stats' : 'Números (Stats)'}
+                                            </label>
+                                            <input 
+                                                type="text"
+                                                value={tempHighlight.stats}
+                                                onChange={(e) => setTempHighlight({...tempHighlight, stats: e.target.value})}
+                                                placeholder={showHighlightModal === 'timeDaSemana' ? "Ex: Campeão Invicto" : "Ex: 15 Gols no Mês"}
+                                                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all font-bold"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                                                {showHighlightModal === 'timeDaSemana' ? 'Descrição do Time' : 'Mensagem de Elogio'}
+                                            </label>
+                                            <textarea 
+                                                value={tempHighlight.message}
+                                                onChange={(e) => setTempHighlight({...tempHighlight, message: e.target.value})}
+                                                placeholder={showHighlightModal === 'timeDaSemana' ? "Ex: Elenco que dominou o baba de sábado!" : "Ex: Parabéns pelo desempenho absurdo!"}
+                                                rows="3"
+                                                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all font-medium text-sm"
+                                            ></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3 pt-2">
+                                        <button onClick={() => setShowHighlightModal(null)} className="flex-1 py-4 font-bold text-zinc-400">Cancelar</button>
+                                        <button onClick={saveHighlightData} className="flex-1 bg-zinc-900 text-white py-4 rounded-2xl font-bold shadow-lg shadow-zinc-900/20">Salvar</button>
+                                    </div>
+                                </div>
+                            </motion.div>
                         </div>
                     )}
                 </div>
