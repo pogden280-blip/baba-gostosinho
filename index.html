@@ -779,12 +779,12 @@
                 let listText = `*⚽💨💨🏃🏻LISTA DO BABA GOSTOSINHO*\n\n`;
                 listText += `*${dateStr} - Sábado* ⚽🏆 15:30 da tarde*\n\n`;
                 listText += `*CHAVE PIX:*\n\n`;
-                listText += `069.237.535-03\n\n`;
+                listText += `06923753503\n\n`;
                 listText += `*Davi da Silva Araújo*\n`;
-                listText += `*Valor: 10,00R$*\n`;
+                listText += `*Valor: 8,00R$*\n`;
                 listText += `*Mensal: 26,00R$*\n\n`;
-                listText += `*por o nome na lista não é garantia de nada, se efetuar o pagamento quinta ou sexta paga 8.00R$, no sabado o valor é 10,00R$*\n`;
-                listText += `Jogador sem pagamento é bloqueado pelo app automaticamente e não entra no sorteio, nem adianta ir pro campo.*\n\n`;
+                listText += `*por o nome na lista e efetuar o pagamento ate sexta 20:00*\n`;
+                listText += `Jogador sem pagamento é bloqueado pelo app automaticamente e não entra no sorteio.*\n\n`;
 
                 for (let i = 1; i <= 24; i++) {
                     const p = activePlayers[i-1];
@@ -932,6 +932,25 @@
                     numTeams = Math.max(2, Math.ceil(sorted.length / drawPlayersPerTeam));
                 }
 
+                const targetSizes = Array(numTeams).fill(0);
+                let remaining = sorted.length;
+                if (drawMode === 'players') {
+                    for (let i = 0; i < numTeams; i++) {
+                        const size = Math.min(remaining, drawPlayersPerTeam);
+                        targetSizes[i] = size;
+                        remaining -= size;
+                    }
+                } else {
+                    const fullSize = Math.ceil(sorted.length / numTeams);
+                    let remaining = sorted.length;
+                    for (let i = 0; i < numTeams - 1; i++) {
+                        const size = Math.min(remaining, fullSize);
+                        targetSizes[i] = size;
+                        remaining -= size;
+                    }
+                    targetSizes[numTeams - 1] = remaining;
+                }
+
                 const newTeams = Array.from({ length: numTeams }, (_, i) => ({
                     id: i + 1,
                     name: `Time ${i + 1}`,
@@ -940,15 +959,27 @@
                     goalkeeper: null
                 }));
                 
-                sorted.forEach((p, i) => {
-                    let teamIndex;
-                    const round = Math.floor(i / numTeams);
-                    if (round % 2 === 0) {
-                        teamIndex = i % numTeams;
-                    } else {
-                        teamIndex = (numTeams - 1) - (i % numTeams);
+                let currentTeamIdx = 0;
+                let direction = 1;
+
+                sorted.forEach((p) => {
+                    let attempts = 0;
+                    while (newTeams[currentTeamIdx].players.length >= targetSizes[currentTeamIdx] && attempts < numTeams * 2) {
+                        currentTeamIdx += direction;
+                        if (currentTeamIdx >= numTeams || currentTeamIdx < 0) {
+                            direction *= -1;
+                            currentTeamIdx = direction === 1 ? 0 : numTeams - 1;
+                        }
+                        attempts++;
                     }
-                    newTeams[teamIndex].players.push(p);
+                    
+                    newTeams[currentTeamIdx].players.push(p);
+                    
+                    currentTeamIdx += direction;
+                    if (currentTeamIdx >= numTeams || currentTeamIdx < 0) {
+                        direction *= -1;
+                        currentTeamIdx = direction === 1 ? 0 : numTeams - 1;
+                    }
                 });
 
                 newTeams.forEach(t => {
