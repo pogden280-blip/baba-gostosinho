@@ -779,7 +779,7 @@
                 let listText = `*⚽💨💨🏃🏻LISTA DO BABA GOSTOSINHO*\n\n`;
                 listText += `*${dateStr} - Sábado* ⚽🏆 15:30 da tarde*\n\n`;
                 listText += `*CHAVE PIX:*\n\n`;
-                listText += `06923753503\n\n`;
+                listText += `069.237.535-03\n\n`;
                 listText += `*Davi da Silva Araújo*\n`;
                 listText += `*Valor: 8,00R$*\n`;
                 listText += `*Mensal: 26,00R$*\n\n`;
@@ -912,37 +912,43 @@
             };
 
             const generateTeams = () => {
-                let confirmedPlayers = players.filter(p => isPlayerConfirmed(p) && !p.isPunished);
-                let activeGuests = [...guests];
+                const confirmedPlayers = players.filter(p => isPlayerConfirmed(p) && !p.isPunished);
+                const activeGuests = [...guests];
+                const allPool = [...confirmedPlayers, ...activeGuests];
 
-                if (!drawIncludeGoalkeepers) {
-                    confirmedPlayers = confirmedPlayers.filter(p => !p.isGoalkeeper);
-                    activeGuests = activeGuests.filter(g => !g.isGoalkeeper);
+                let goalkeepersPool = [];
+                let fieldPlayersPool = [];
+
+                if (drawIncludeGoalkeepers) {
+                    goalkeepersPool = allPool.filter(p => p.isGoalkeeper);
+                    fieldPlayersPool = allPool.filter(p => !p.isGoalkeeper);
+                } else {
+                    fieldPlayersPool = allPool.filter(p => !p.isGoalkeeper);
                 }
 
-                const activePlayersPool = [...confirmedPlayers, ...activeGuests];
-                if (activePlayersPool.length < 2) {
-                    alert('Selecione pelo menos 2 jogadores para o sorteio!');
+                if (fieldPlayersPool.length < 2) {
+                    alert('Selecione pelo menos 2 jogadores de linha para o sorteio!');
                     return;
                 }
-                const sorted = activePlayersPool.sort((a, b) => b.level - a.level);
+
+                const sortedFieldPlayers = fieldPlayersPool.sort((a, b) => b.level - a.level);
                 
                 let numTeams = drawNumTeams;
                 if (drawMode === 'players') {
-                    numTeams = Math.max(2, Math.ceil(sorted.length / drawPlayersPerTeam));
+                    numTeams = Math.max(2, Math.ceil(sortedFieldPlayers.length / drawPlayersPerTeam));
                 }
 
                 const targetSizes = Array(numTeams).fill(0);
-                let remaining = sorted.length;
+                let remainingField = sortedFieldPlayers.length;
                 if (drawMode === 'players') {
                     for (let i = 0; i < numTeams; i++) {
-                        const size = Math.min(remaining, drawPlayersPerTeam);
+                        const size = Math.min(remainingField, drawPlayersPerTeam);
                         targetSizes[i] = size;
-                        remaining -= size;
+                        remainingField -= size;
                     }
                 } else {
-                    const fullSize = Math.ceil(sorted.length / numTeams);
-                    let remaining = sorted.length;
+                    const fullSize = Math.ceil(sortedFieldPlayers.length / numTeams);
+                    let remaining = sortedFieldPlayers.length;
                     for (let i = 0; i < numTeams - 1; i++) {
                         const size = Math.min(remaining, fullSize);
                         targetSizes[i] = size;
@@ -956,13 +962,13 @@
                     name: `Time ${i + 1}`,
                     players: [],
                     score: 0,
-                    goalkeeper: null
+                    goalkeeper: goalkeepersPool[i] || null
                 }));
                 
                 let currentTeamIdx = 0;
                 let direction = 1;
 
-                sorted.forEach((p) => {
+                sortedFieldPlayers.forEach((p) => {
                     let attempts = 0;
                     while (newTeams[currentTeamIdx].players.length >= targetSizes[currentTeamIdx] && attempts < numTeams * 2) {
                         currentTeamIdx += direction;
@@ -986,7 +992,7 @@
                     t.players = t.players.sort(() => Math.random() - 0.5);
                 });
 
-                const inDrawIds = activePlayersPool.map(p => p.id);
+                const inDrawIds = allPool.map(p => p.id);
                 setPlayersInDrawIds(inDrawIds);
 
                 setTeams(newTeams);
