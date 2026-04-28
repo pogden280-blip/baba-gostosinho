@@ -186,6 +186,7 @@
                 artilheiro: { name: '', photo: '', stats: '', message: '' },
                 garcom: { name: '', photo: '', stats: '', message: '' },
                 goleiro: { name: '', photo: '', stats: '', message: '' },
+                zagueiro: { name: '', photo: '', stats: '', message: '' },
                 timeDaSemana: { name: '', photo: '', stats: '', message: '' }
             });
             const [showHighlightModal, setShowHighlightModal] = useState(null); // 'artilheiro', 'garcom', 'goleiro' or null
@@ -269,6 +270,7 @@
                                 artilheiro: { name: '', photo: '', stats: '', message: '' },
                                 garcom: { name: '', photo: '', stats: '', message: '' },
                                 goleiro: { name: '', photo: '', stats: '', message: '' },
+                                zagueiro: { name: '', photo: '', stats: '', message: '' },
                                 timeDaSemana: { name: '', photo: '', stats: '', message: '' }
                             });
                             
@@ -1536,10 +1538,34 @@
 
                 // Initialize player stats
                 players.forEach(p => {
-                    playerStats[p.id] = { name: p.name, goals: 0, assists: 0, goalsConceded: 0, isGoalkeeper: p.isGoalkeeper, gamesAsGK: 0, level: p.level || 3, defensePoints: 0 };
+                    playerStats[p.id] = { 
+                        name: p.name, 
+                        goals: 0, 
+                        assists: 0, 
+                        goalsConceded: 0, 
+                        isGoalkeeper: p.isGoalkeeper, 
+                        gamesAsGK: 0, 
+                        level: p.level || 3, 
+                        defensePoints: 0,
+                        monthlyMatchesPlayed: 0,
+                        presences: p.presences || 0,
+                        totalBabas: p.totalBabas || 0
+                    };
                 });
                 guests.forEach(g => {
-                    playerStats[g.id] = { name: g.name, goals: 0, assists: 0, goalsConceded: 0, isGoalkeeper: g.isGoalkeeper, gamesAsGK: 0, level: g.level || 3, defensePoints: 0 };
+                    playerStats[g.id] = { 
+                        name: g.name, 
+                        goals: 0, 
+                        assists: 0, 
+                        goalsConceded: 0, 
+                        isGoalkeeper: g.isGoalkeeper, 
+                        gamesAsGK: 0, 
+                        level: g.level || 3, 
+                        defensePoints: 0,
+                        monthlyMatchesPlayed: 0,
+                        presences: g.presences || 1, // Guests are 1/1
+                        totalBabas: g.totalBabas || 1
+                    };
                 });
 
                 teams.forEach(t => {
@@ -1567,15 +1593,21 @@
 
                     if (m.t1Players) {
                         m.t1Players.forEach(pid => {
-                            if (playerStats[pid] && playerStats[pid].level === 5) {
-                                playerStats[pid].defensePoints = (playerStats[pid].defensePoints || 0) + t1DefPoints;
+                            if (playerStats[pid]) {
+                                playerStats[pid].monthlyMatchesPlayed = (playerStats[pid].monthlyMatchesPlayed || 0) + 1;
+                                if (playerStats[pid].level === 5) {
+                                    playerStats[pid].defensePoints = (playerStats[pid].defensePoints || 0) + t1DefPoints;
+                                }
                             }
                         });
                     }
                     if (m.t2Players) {
                         m.t2Players.forEach(pid => {
-                            if (playerStats[pid] && playerStats[pid].level === 5) {
-                                playerStats[pid].defensePoints = (playerStats[pid].defensePoints || 0) + t2DefPoints;
+                            if (playerStats[pid]) {
+                                playerStats[pid].monthlyMatchesPlayed = (playerStats[pid].monthlyMatchesPlayed || 0) + 1;
+                                if (playerStats[pid].level === 5) {
+                                    playerStats[pid].defensePoints = (playerStats[pid].defensePoints || 0) + t2DefPoints;
+                                }
                             }
                         });
                     }
@@ -3510,19 +3542,21 @@
 
                                 {/* Galeria de Destaques */}
                                 <div className="grid grid-cols-1 gap-6">
-                                    {['timeDaSemana', 'artilheiro', 'garcom', 'goleiro'].map((type) => {
+                                    {['timeDaSemana', 'artilheiro', 'garcom', 'goleiro', 'zagueiro'].map((type) => {
                                         const h = highlights[type];
                                         const titles = {
                                             timeDaSemana: 'Time da Semana',
                                             artilheiro: 'Artilheiro do Mês',
                                             garcom: 'Garçom do Mês',
-                                            goleiro: 'Goleiro do Mês'
+                                            goleiro: 'Goleiro do Mês',
+                                            zagueiro: 'Zagueiro do Mês'
                                         };
                                         const icons = {
                                             timeDaSemana: <Icon name="users" size={20} className="text-indigo-500" />,
                                             artilheiro: <Icon name="flame" size={20} className="text-orange-500" />,
                                             garcom: <Icon name="target" size={20} className="text-blue-500" />,
-                                            goleiro: <Icon name="shield" size={20} className="text-emerald-500" />
+                                            goleiro: <Icon name="shield" size={20} className="text-emerald-500" />,
+                                            zagueiro: <Icon name="shield-check" size={20} className="text-blue-500" />
                                         };
 
                                         return (
@@ -3601,8 +3635,13 @@
                                              </h4>
                                             <div className="space-y-3">
                                                 {Object.values(monthlyStats)
-                                                    .filter(p => p.goals > 0)
-                                                    .sort((a, b) => b.goals - a.goals)
+                                                    .filter(p => p.goals > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
+                                                    .sort((a, b) => {
+                                                        if (b.goals !== a.goals) return b.goals - a.goals;
+                                                        const avgA = a.monthlyMatchesPlayed > 0 ? a.goals / a.monthlyMatchesPlayed : 0;
+                                                        const avgB = b.monthlyMatchesPlayed > 0 ? b.goals / b.monthlyMatchesPlayed : 0;
+                                                        return avgB - avgA;
+                                                    })
                                                     .slice(0, 10)
                                                     .map((p, i) => (
                                                         <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
@@ -3617,7 +3656,10 @@
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                            <span className="text-orange-400 font-black">{p.goals} GOLS</span>
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-orange-400 font-black">{p.goals} GOLS</span>
+                                                                <span className="text-[8px] text-zinc-500 font-bold">MÉDIA: {(p.goals / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
+                                                            </div>
                                                         </div>
                                                     ))
                                                 }
@@ -3633,8 +3675,13 @@
                                             </h4>
                                             <div className="space-y-3">
                                                 {Object.values(monthlyStats)
-                                                    .filter(p => p.assists > 0)
-                                                    .sort((a, b) => b.assists - a.assists)
+                                                    .filter(p => p.assists > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
+                                                    .sort((a, b) => {
+                                                        if (b.assists !== a.assists) return b.assists - a.assists;
+                                                        const avgA = a.monthlyMatchesPlayed > 0 ? a.assists / a.monthlyMatchesPlayed : 0;
+                                                        const avgB = b.monthlyMatchesPlayed > 0 ? b.assists / b.monthlyMatchesPlayed : 0;
+                                                        return avgB - avgA;
+                                                    })
                                                     .slice(0, 10)
                                                     .map((p, i) => (
                                                         <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
@@ -3649,7 +3696,10 @@
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                            <span className="text-blue-400 font-black">{p.assists} AST</span>
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-blue-400 font-black">{p.assists} AST</span>
+                                                                <span className="text-[8px] text-zinc-500 font-bold">MÉDIA: {(p.assists / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
+                                                            </div>
                                                         </div>
                                                     ))
                                                 }
@@ -3665,7 +3715,7 @@
                                             </h4>
                                             <div className="space-y-3">
                                                 {Object.values(monthlyStats)
-                                                    .filter(p => p.isGoalkeeper && p.goalsConceded !== undefined)
+                                                    .filter(p => p.isGoalkeeper && p.goalsConceded !== undefined && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
                                                     .sort((a, b) => (a.goalsConceded || 0) - (b.goalsConceded || 0))
                                                     .slice(0, 10)
                                                     .map((p, i) => (
@@ -3700,8 +3750,13 @@
                                             </h4>
                                             <div className="space-y-3">
                                                 {Object.values(monthlyStats)
-                                                    .filter(p => p.level === 5 && p.defensePoints > 0)
-                                                    .sort((a, b) => (b.defensePoints || 0) - (a.defensePoints || 0))
+                                                    .filter(p => p.level === 5 && p.defensePoints > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
+                                                    .sort((a, b) => {
+                                                        if (b.defensePoints !== a.defensePoints) return (b.defensePoints || 0) - (a.defensePoints || 0);
+                                                        const avgA = a.monthlyMatchesPlayed > 0 ? a.defensePoints / a.monthlyMatchesPlayed : 0;
+                                                        const avgB = b.monthlyMatchesPlayed > 0 ? b.defensePoints / b.monthlyMatchesPlayed : 0;
+                                                        return avgB - avgA;
+                                                    })
                                                     .slice(0, 10)
                                                     .map((p, i) => (
                                                         <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
@@ -3714,7 +3769,7 @@
                                                             </div>
                                                             <div className="flex flex-col items-end">
                                                                 <span className="text-blue-400 font-black">{p.defensePoints || 0} PTS</span>
-                                                                <span className="text-[8px] text-zinc-500 uppercase font-bold">Desempenho</span>
+                                                                <span className="text-[8px] text-zinc-500 uppercase font-bold">Média: {(p.defensePoints / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
                                                             </div>
                                                         </div>
                                                     ))
