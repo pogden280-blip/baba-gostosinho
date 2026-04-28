@@ -80,6 +80,18 @@
             return <span ref={containerRef} className={`inline-flex items-center justify-center ${className}`}></span>;
         };
 
+        // Helper to get position tag based on level/stars
+        const getPositionTag = (level) => {
+            switch (level) {
+                case 1: return 'ATA';
+                case 2: return 'MC';
+                case 3: return 'LT';
+                case 4: return 'VOL';
+                case 5: return 'ZC';
+                default: return '';
+            }
+        };
+
         function App() {
             const [players, setPlayers] = useState([]);
             const [finances, setFinances] = useState([]);
@@ -1228,6 +1240,8 @@
                     s1: t1.score,
                     t2: t2.name,
                     s2: t2.score,
+                    t1Players: t1.players.map(p => p.id),
+                    t2Players: t2.players.map(p => p.id),
                     g1: t1.goalkeeper ? t1.goalkeeper.id : null,
                     g1Name: t1.goalkeeper ? t1.goalkeeper.name : null,
                     g2: t2.goalkeeper ? t2.goalkeeper.id : null,
@@ -1522,15 +1536,23 @@
 
                 // Initialize player stats
                 players.forEach(p => {
-                    playerStats[p.id] = { name: p.name, goals: 0, assists: 0, goalsConceded: 0, isGoalkeeper: p.isGoalkeeper, gamesAsGK: 0 };
+                    playerStats[p.id] = { name: p.name, goals: 0, assists: 0, goalsConceded: 0, isGoalkeeper: p.isGoalkeeper, gamesAsGK: 0, level: p.level || 3, defensePoints: 0 };
                 });
                 guests.forEach(g => {
-                    playerStats[g.id] = { name: g.name, goals: 0, assists: 0, goalsConceded: 0, isGoalkeeper: g.isGoalkeeper, gamesAsGK: 0 };
+                    playerStats[g.id] = { name: g.name, goals: 0, assists: 0, goalsConceded: 0, isGoalkeeper: g.isGoalkeeper, gamesAsGK: 0, level: g.level || 3, defensePoints: 0 };
                 });
 
                 teams.forEach(t => {
                     stats[t.name] = { v: 0, e: 0, d: 0, gp: 0 };
                 });
+
+                const getDefensePoints = (goals) => {
+                    if (goals === 0) return 10;
+                    if (goals === 1) return 8;
+                    if (goals === 2) return 6;
+                    if (goals === 3) return 4;
+                    return 2;
+                };
 
                 matchHistory.forEach(m => {
                     if (!stats[m.t1]) stats[m.t1] = { v: 0, e: 0, d: 0, gp: 0 };
@@ -1538,6 +1560,25 @@
 
                     stats[m.t1].gp += m.s1;
                     stats[m.t2].gp += m.s2;
+
+                    // Defense Points for 5-star players (ZC)
+                    const t1DefPoints = getDefensePoints(m.s2);
+                    const t2DefPoints = getDefensePoints(m.s1);
+
+                    if (m.t1Players) {
+                        m.t1Players.forEach(pid => {
+                            if (playerStats[pid] && playerStats[pid].level === 5) {
+                                playerStats[pid].defensePoints = (playerStats[pid].defensePoints || 0) + t1DefPoints;
+                            }
+                        });
+                    }
+                    if (m.t2Players) {
+                        m.t2Players.forEach(pid => {
+                            if (playerStats[pid] && playerStats[pid].level === 5) {
+                                playerStats[pid].defensePoints = (playerStats[pid].defensePoints || 0) + t2DefPoints;
+                            }
+                        });
+                    }
 
                     // Goleiros - Gols sofridos
                     if (m.g1) {
@@ -1549,7 +1590,8 @@
                                 assists: 0, 
                                 goalsConceded: 0, 
                                 isGoalkeeper: pData ? pData.isGoalkeeper : true,
-                                gamesAsGK: 0
+                                gamesAsGK: 0,
+                                level: pData ? (pData.level || 3) : 3
                             };
                         }
                         if (playerStats[m.g1].isGoalkeeper) {
@@ -1566,7 +1608,8 @@
                                 assists: 0, 
                                 goalsConceded: 0, 
                                 isGoalkeeper: pData ? pData.isGoalkeeper : true,
-                                gamesAsGK: 0
+                                gamesAsGK: 0,
+                                level: pData ? (pData.level || 3) : 3
                             };
                         }
                         if (playerStats[m.g2].isGoalkeeper) {
@@ -2129,9 +2172,14 @@
                                                                 <span className="text-xs font-bold text-zinc-500 uppercase">Nível:</span>
                                                                 <div className="flex gap-1">
                                                                     {[1, 2, 3, 4, 5].map((star) => (
-                                                                        <button key={star} onClick={() => setNewPlayerRating(star)} className={`p-1 ${newPlayerRating >= star ? 'text-amber-400' : 'text-zinc-300'}`}>
-                                                                            <Icon name="star" size={18} fill={newPlayerRating >= star ? "currentColor" : "none"} />
-                                                                        </button>
+                                                                        <div key={star} className="flex flex-col items-center gap-1">
+                                                                            <button onClick={() => setNewPlayerRating(star)} className={`p-1 ${newPlayerRating >= star ? 'text-amber-400' : 'text-zinc-300'}`}>
+                                                                                <Icon name="star" size={18} fill={newPlayerRating >= star ? "currentColor" : "none"} />
+                                                                            </button>
+                                                                            <span className={`text-[8px] font-black uppercase ${newPlayerRating === star ? 'text-zinc-900' : 'text-zinc-300'}`}>
+                                                                                {getPositionTag(star)}
+                                                                            </span>
+                                                                        </div>
                                                                     ))}
                                                                 </div>
                                                             </div>
@@ -2260,10 +2308,17 @@
                                                                                 {p.type?.toUpperCase() || 'DIARISTA'}
                                                                             </span>
                                                                         )}
-                                                                        <div className="ml-2 flex items-center gap-0.5">
-                                                                            {[...Array(p.level || 3)].map((_, i) => (
-                                                                                <Icon key={i} name="star" size={8} className="text-amber-400" fill="currentColor" />
-                                                                            ))}
+                                                                        <div className="ml-2 flex items-center gap-1">
+                                                                            <div className="flex items-center gap-0.5">
+                                                                                {[...Array(p.level || 3)].map((_, i) => (
+                                                                                    <Icon key={i} name="star" size={8} className="text-amber-400" fill="currentColor" />
+                                                                                ))}
+                                                                            </div>
+                                                                            {getPositionTag(p.level || 3) && (
+                                                                                <span className="text-[7px] font-black bg-zinc-900 text-white px-1 rounded-[2px] leading-tight">
+                                                                                    {getPositionTag(p.level || 3)}
+                                                                                </span>
+                                                                            )}
                                                                         </div>
                                                                         
                                                                         {/* Botões de Punição */}
@@ -2450,9 +2505,14 @@
                                                             <div className="flex items-center justify-between bg-zinc-50 p-2 rounded-xl">
                                                                 <div className="flex gap-1">
                                                                     {[1, 2, 3, 4, 5].map((star) => (
-                                                                        <button key={star} onClick={() => setNewGuestRating(star)} className={`p-1 ${newGuestRating >= star ? 'text-amber-400' : 'text-zinc-300'}`}>
-                                                                            <Icon name="star" size={18} fill={newGuestRating >= star ? "currentColor" : "none"} />
-                                                                        </button>
+                                                                        <div key={star} className="flex flex-col items-center gap-1">
+                                                                            <button key={star} onClick={() => setNewGuestRating(star)} className={`p-1 ${newGuestRating >= star ? 'text-amber-400' : 'text-zinc-300'}`}>
+                                                                                <Icon name="star" size={18} fill={newGuestRating >= star ? "currentColor" : "none"} />
+                                                                            </button>
+                                                                            <span className={`text-[8px] font-black uppercase ${newGuestRating === star ? 'text-zinc-900' : 'text-zinc-300'}`}>
+                                                                                {getPositionTag(star)}
+                                                                            </span>
+                                                                        </div>
                                                                     ))}
                                                                 </div>
                                                                 <div className="flex gap-2">
@@ -2594,10 +2654,17 @@
                                                                                     </>
                                                                                 )}
                                                                             </div>
-                                                                            <div className="flex gap-0.5 mt-0.5">
-                                                                                {Array.from({ length: p.level || 0 }).map((_, i) => (
-                                                                                    <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
-                                                                                ))}
+                                                                            <div className="flex items-center gap-1 mt-0.5">
+                                                                                <div className="flex gap-0.5">
+                                                                                    {Array.from({ length: p.level || 0 }).map((_, i) => (
+                                                                                        <Icon key={i} name="star" size={8} fill="currentColor" className="text-amber-400" />
+                                                                                    ))}
+                                                                                </div>
+                                                                                {getPositionTag(p.level) && (
+                                                                                    <span className="text-[7px] font-black bg-zinc-900 text-white px-1 rounded-[2px] leading-tight">
+                                                                                        {getPositionTag(p.level)}
+                                                                                    </span>
+                                                                                )}
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -2825,7 +2892,14 @@
                                                     <div className="p-4 space-y-2">
                                                         {team.players.map(p => (
                                                             <div key={p.id} className="flex items-center justify-between py-1 border-b border-zinc-50 last:border-0">
-                                                                <span className="text-sm font-medium text-zinc-700">{p.name}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-medium text-zinc-700">{p.name}</span>
+                                                                    {getPositionTag(p.level || 3) && (
+                                                                        <span className="text-[7px] font-black bg-zinc-900 text-white px-1 rounded-[2px] leading-tight">
+                                                                            {getPositionTag(p.level || 3)}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                                 {isAdminMode && (
                                                                      <button 
                                                                          onClick={() => {
@@ -3046,8 +3120,9 @@
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div className="absolute -bottom-3 -right-3 bg-zinc-900 text-white w-12 h-12 rounded-2xl flex items-center justify-center border-4 border-white shadow-lg">
+                                                        <div className="absolute -bottom-3 -right-3 bg-zinc-900 text-white px-3 h-12 rounded-2xl flex items-center justify-center border-4 border-white shadow-lg gap-2">
                                                             <span className="text-lg font-black">{careerPlayer.level || 3}</span>
+                                                            <span className="text-[10px] font-black border-l border-zinc-700 pl-2">{getPositionTag(careerPlayer.level || 3)}</span>
                                                         </div>
                                                     </div>
                                                     <div className="space-y-1">
@@ -3232,8 +3307,13 @@
                                                     </h3>
                                                     <div className="flex flex-wrap gap-1">
                                                         {team.players.map((p, pIdx) => (
-                                                            <span key={pIdx} className="text-[10px] bg-white px-2 py-1 rounded-md border border-zinc-200 text-zinc-600">
+                                                            <span key={pIdx} className="text-[10px] bg-white px-2 py-1 rounded-md border border-zinc-200 text-zinc-600 flex items-center gap-1">
                                                                 {p.name}
+                                                                {getPositionTag(p.level || 3) && (
+                                                                    <span className="text-[6px] font-black bg-zinc-900 text-white px-1 rounded-[1px] leading-tight">
+                                                                        {getPositionTag(p.level || 3)}
+                                                                    </span>
+                                                                )}
                                                             </span>
                                                         ))}
                                                         {currentLoans.filter(l => l.toTeamIdx === idx).map((l, lIdx) => (
@@ -3528,7 +3608,14 @@
                                                         <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
                                                             <div className="flex items-center gap-3">
                                                                 <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
-                                                                <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                    {getPositionTag(p.level) && (
+                                                                        <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
+                                                                            {getPositionTag(p.level)}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                             <span className="text-orange-400 font-black">{p.goals} GOLS</span>
                                                         </div>
@@ -3553,7 +3640,14 @@
                                                         <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
                                                             <div className="flex items-center gap-3">
                                                                 <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
-                                                                <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                    {getPositionTag(p.level) && (
+                                                                        <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
+                                                                            {getPositionTag(p.level)}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                             <span className="text-blue-400 font-black">{p.assists} AST</span>
                                                         </div>
@@ -3578,7 +3672,14 @@
                                                         <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
                                                             <div className="flex items-center gap-3">
                                                                 <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
-                                                                <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                    {getPositionTag(p.level) && (
+                                                                        <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
+                                                                            {getPositionTag(p.level)}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                             <div className="flex flex-col items-end">
                                                                 <span className="text-emerald-400 font-black">{p.goalsConceded || 0} GOLS</span>
@@ -3589,6 +3690,37 @@
                                                 }
                                                 {Object.values(monthlyStats).filter(p => p.isGoalkeeper).length === 0 && (
                                                     <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                <Icon name="shield-check" size={16} className="text-blue-500" /> Melhor Defesa (ZC - Ranking)
+                                            </h4>
+                                            <div className="space-y-3">
+                                                {Object.values(monthlyStats)
+                                                    .filter(p => p.level === 5 && p.defensePoints > 0)
+                                                    .sort((a, b) => (b.defensePoints || 0) - (a.defensePoints || 0))
+                                                    .slice(0, 10)
+                                                    .map((p, i) => (
+                                                        <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                    <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">ZC</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-blue-400 font-black">{p.defensePoints || 0} PTS</span>
+                                                                <span className="text-[8px] text-zinc-500 uppercase font-bold">Desempenho</span>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                }
+                                                {Object.values(monthlyStats).filter(p => p.level === 5 && p.defensePoints > 0).length === 0 && (
+                                                    <p className="text-sm text-zinc-600 italic text-center py-4">Nenhum dado defensivo disponível ainda.</p>
                                                 )}
                                             </div>
                                         </div>
@@ -3665,7 +3797,10 @@
                                                             <div className="text-left">
                                                                 <p className="text-xs font-bold text-zinc-800">{p.name}</p>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className="text-[8px] font-black bg-zinc-200 text-zinc-600 px-1 py-0.5 rounded uppercase">Nível {p.level || p.rating || 3}</span>
+                                                                    <span className="text-[8px] font-black bg-zinc-200 text-zinc-600 px-1 py-0.5 rounded uppercase flex items-center gap-1">
+                                                                    Nível {p.level || p.rating || 3}
+                                                                    <span className="border-l border-zinc-400 pl-1">{getPositionTag(p.level || p.rating || 3)}</span>
+                                                                </span>
                                                                     {p.role === 'commission' ? (
                                                                         <span className="text-[8px] font-black bg-zinc-800 text-white px-1.5 py-0.5 rounded uppercase">Comissão</span>
                                                                     ) : (
@@ -3849,13 +3984,17 @@
                                             <label className="text-[10px] font-bold text-zinc-400 uppercase">Nível (Estrelas)</label>
                                             <div className="flex gap-2 bg-zinc-50 p-2 rounded-xl justify-center">
                                                 {[1, 2, 3, 4, 5].map((star) => (
-                                                    <button 
-                                                        key={star} 
-                                                        onClick={() => setEditingPlayer({...editingPlayer, level: star})} 
-                                                        className={`p-1 transition-all ${editingPlayer.level >= star ? 'text-amber-400 scale-110' : 'text-zinc-300 scale-100'}`}
-                                                    >
-                                                        <Icon name="star" size={24} fill={editingPlayer.level >= star ? "currentColor" : "none"} />
-                                                    </button>
+                                                    <div key={star} className="flex flex-col items-center gap-1">
+                                                        <button 
+                                                            onClick={() => setEditingPlayer({...editingPlayer, level: star})} 
+                                                            className={`p-1 transition-all ${editingPlayer.level >= star ? 'text-amber-400 scale-110' : 'text-zinc-300 scale-100'}`}
+                                                        >
+                                                            <Icon name="star" size={24} fill={editingPlayer.level >= star ? "currentColor" : "none"} />
+                                                        </button>
+                                                        <span className={`text-[8px] font-black uppercase ${editingPlayer.level === star ? 'text-zinc-900' : 'text-zinc-300'}`}>
+                                                            {getPositionTag(star)}
+                                                        </span>
+                                                    </div>
                                                 ))}
                                             </div>
                                         </div>
