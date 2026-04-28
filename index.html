@@ -91,6 +91,9 @@
             const [showPasswordModal, setShowPasswordModal] = useState(false);
             const [passwordInput, setPasswordInput] = useState('');
             const [isLoading, setIsLoading] = useState(true);
+            const [hasLoadedSuccessfully, setHasLoadedSuccessfully] = useState(false);
+            const [isRecovering, setIsRecovering] = useState(false);
+            const dataLoadedRef = useRef(false);
             
             const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
             const [showAddGuestForm, setShowAddGuestForm] = useState(false);
@@ -266,37 +269,45 @@
 
                             setShowDaySummary(data.record.showDaySummary || false);
 
-                            if (expirationsChanged) {
-                                saveData(processedPlayers, rawFinances, data.record.lastDraw, rawHistory, data.record.showDaySummary, rawGuests, finalConfirmed, rawMensalidade, rawDiaria, rawAbsent);
-                            }
-                            if (data.record.lastDraw) {
-                                if (data.record.lastDraw.teams) {
-                                    setTeams(data.record.lastDraw.teams);
-                                    if (data.record.lastDraw.currentMatchTeams) {
-                                        setCurrentMatchTeams(data.record.lastDraw.currentMatchTeams);
+                                if (data.record.lastDraw) {
+                                    if (data.record.lastDraw.teams) {
+                                        setTeams(data.record.lastDraw.teams);
+                                        if (data.record.lastDraw.currentMatchTeams) {
+                                            setCurrentMatchTeams(data.record.lastDraw.currentMatchTeams);
+                                        }
+                                        if (data.record.lastDraw.teamQueue) {
+                                            setTeamQueue(data.record.lastDraw.teamQueue);
+                                        }
+                                        if (data.record.lastDraw.playersInDrawIds) {
+                                            setPlayersInDrawIds(data.record.lastDraw.playersInDrawIds);
+                                        }
+                                        if (data.record.lastDraw.currentLoans) {
+                                            setCurrentLoans(data.record.lastDraw.currentLoans);
+                                        }
+                                        if (data.record.lastDraw.loanedPlayersIdsByTeam) {
+                                            setLoanedPlayersIdsByTeam(data.record.lastDraw.loanedPlayersIdsByTeam);
+                                        }
+                                    } else if (data.record.lastDraw.teamA) {
+                                        setTeams([
+                                            { ...data.record.lastDraw.teamA, name: 'Time 1' },
+                                            { ...data.record.lastDraw.teamB, name: 'Time 2' }
+                                        ]);
                                     }
-                                    if (data.record.lastDraw.teamQueue) {
-                                        setTeamQueue(data.record.lastDraw.teamQueue);
-                                    }
-                                    if (data.record.lastDraw.playersInDrawIds) {
-                                        setPlayersInDrawIds(data.record.lastDraw.playersInDrawIds);
-                                    }
-                                    if (data.record.lastDraw.currentLoans) {
-                                        setCurrentLoans(data.record.lastDraw.currentLoans);
-                                    }
-                                    if (data.record.lastDraw.loanedPlayersIdsByTeam) {
-                                        setLoanedPlayersIdsByTeam(data.record.lastDraw.loanedPlayersIdsByTeam);
-                                    }
-                                } else if (data.record.lastDraw.teamA) {
-                                    setTeams([
-                                        { ...data.record.lastDraw.teamA, name: 'Time 1' },
-                                        { ...data.record.lastDraw.teamB, name: 'Time 2' }
-                                    ]);
                                 }
+
+                                dataLoadedRef.current = true;
+                                setHasLoadedSuccessfully(true);
+
+                                if (expirationsChanged) {
+                                    saveData(processedPlayers, rawFinances, data.record.lastDraw, rawHistory, data.record.showDaySummary, rawGuests, finalConfirmed, rawMensalidade, rawDiaria, rawAbsent);
+                                }
+                            } else {
+                                console.error("Erro na resposta do servidor:", response.status);
+                                alert("Erro ao conectar com o banco de dados. Os dados não foram carregados. Por favor, verifique sua conexão ou contate o suporte.");
                             }
-                        }
-                    } catch (error) {
+                        } catch (error) {
                         console.error("Erro ao carregar dados:", error);
+                        alert("Ocorreu um erro crítico ao carregar seus dados. Por segurança, o salvamento automático foi desativado nesta sessão.");
                     } finally {
                         setIsLoading(false);
                     }
@@ -306,6 +317,10 @@
 
             // Salvar dados no JSONbin
             const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory, newCurrentLoans, newLoanHistory, newMonthlyStats, newBabaCount, newHighlights) => {
+                if (!dataLoadedRef.current) {
+                    console.warn("Tentativa de salvamento bloqueada: O banco de dados ainda não foi carregado.");
+                    return;
+                }
                 try {
                     // Pruning logic to save space in JSONbin
                     const prunedFinances = (newFinances !== undefined ? newFinances : finances).slice(-200); // Keep last 200 financial records
@@ -1762,6 +1777,80 @@
                                                               className="w-full bg-red-50 text-red-600 font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
                                                           >
                                                               <Icon name="trash-2" size={14} /> LIMPEZA PROFUNDA (OTIMIZAR)
+                                                          </button>
+                                                      </div>
+                                                  </section>
+
+                                                  <section className="bg-white p-5 rounded-2xl shadow-sm border border-zinc-200">
+                                                      <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
+                                                          <Icon name="undo" size={16} />
+                                                          Recuperação de Dados
+                                                      </h3>
+                                                      <div className="space-y-3">
+                                                          <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">
+                                                              Caso tenha perdido dados recentemente, você pode tentar recuperar a última versão salva pelo servidor. 
+                                                          </p>
+                                                          <button 
+                                                              disabled={isRecovering}
+                                                              onClick={async () => {
+                                                                  if (confirm("Deseja tentar recuperar a versão anterior do banco de dados? Isso substituirá as informações atuais pelas salvas anteriormente no servidor.")) {
+                                                                      try {
+                                                                          setIsRecovering(true);
+                                                                          const resp = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+                                                                              headers: { 'X-Master-Key': MASTER_KEY, 'X-Bin-Meta': 'false' }
+                                                                          });
+                                                                          if (resp.ok) {
+                                                                              const recoveredData = await resp.json();
+                                                                              if (recoveredData && recoveredData.players) {
+                                                                                  dataLoadedRef.current = true;
+                                                                                  setPlayers(recoveredData.players);
+                                                                                  setFinances(recoveredData.finances || []);
+                                                                                  setMatchHistory(recoveredData.matchHistory || []);
+                                                                                  setMonthlyStats(recoveredData.monthlyStats || {});
+                                                                                  setBabaCount(recoveredData.babaCount || 0);
+                                                                                  alert("Dados recuperados com sucesso! Verifique as listas.");
+                                                                                  setHasLoadedSuccessfully(true);
+                                                                              } else {
+                                                                                  alert("Não foram encontrados dados válidos na última versão.");
+                                                                              }
+                                                                          } else {
+                                                                              alert("Erro ao acessar o histórico de versões.");
+                                                                          }
+                                                                      } catch (e) {
+                                                                          alert("Falha na tentativa de recuperação: " + e.message);
+                                                                      } finally {
+                                                                          setIsRecovering(false);
+                                                                      }
+                                                                  }
+                                                              }}
+                                                              className="w-full bg-zinc-900 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                                                          >
+                                                              {isRecovering ? 'RECUPERANDO...' : 'RECUPERAR ÚLTIMA VERSÃO'}
+                                                          </button>
+                                                          
+                                                          <button 
+                                                              onClick={() => {
+                                                                  const dataStr = JSON.stringify({
+                                                                      players,
+                                                                      finances,
+                                                                      matchHistory,
+                                                                      monthlyStats,
+                                                                      babaCount,
+                                                                      highlights,
+                                                                      confirmedPlayerIds,
+                                                                      guests
+                                                                  }, null, 2);
+                                                                  const blob = new Blob([dataStr], { type: 'application/json' });
+                                                                  const url = URL.createObjectURL(blob);
+                                                                  const link = document.createElement('a');
+                                                                  link.href = url;
+                                                                  link.download = `backup_baba_${new Date().toISOString().split('T')[0]}.json`;
+                                                                  link.click();
+                                                                  URL.revokeObjectURL(url);
+                                                              }}
+                                                              className="w-full bg-emerald-50 text-emerald-600 font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors border border-emerald-100"
+                                                          >
+                                                              <Icon name="download" size={14} /> EXPORTAR BACKUP (JSON)
                                                           </button>
                                                       </div>
                                                   </section>
