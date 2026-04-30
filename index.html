@@ -2785,7 +2785,24 @@
                                                             <div className="grid grid-cols-2 gap-3">
                                                                 {teams.map((team, idx) => (
                                                                     <div key={idx} className={`${idx % 2 === 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-zinc-50 border-zinc-100'} p-3 rounded-2xl border`}>
-                                                                        <p className={`text-[10px] font-bold ${idx % 2 === 0 ? 'text-emerald-600' : 'text-zinc-600'} uppercase mb-2`}>{team.name}</p>
+                                                                        <div className="flex justify-between items-center mb-2">
+                                                                            <p className={`text-[10px] font-bold ${idx % 2 === 0 ? 'text-emerald-600' : 'text-zinc-600'} uppercase`}>{team.name}</p>
+                                                                            {isAdminMode && (
+                                                                                <button 
+                                                                                    onClick={() => {
+                                                                                        const newName = prompt('Novo nome para o time:', team.name);
+                                                                                        if (newName && newName !== team.name) {
+                                                                                            const updatedTeams = teams.map((t, tIdx) => tIdx === idx ? { ...t, name: newName } : t);
+                                                                                            setTeams(updatedTeams);
+                                                                                            saveData(players, finances, { teams: updatedTeams, currentMatchTeams, teamQueue });
+                                                                                        }
+                                                                                    }}
+                                                                                    className="text-zinc-400 hover:text-zinc-600"
+                                                                                >
+                                                                                    <Icon name="edit-3" size={12} />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
                                                                         <div className="space-y-1">
                                                                             {team.players.map(p => (
                                                                                 <p key={p.id} className={`text-[10px] font-medium ${idx % 2 === 0 ? 'text-emerald-900' : 'text-zinc-900'} truncate`}>{p.name}</p>
@@ -2945,6 +2962,21 @@
                                                 <div key={idx} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
                                                     <div className={`${idx % 2 === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} px-4 py-3 text-white flex justify-between items-center`}>
                                                         <h3 className="font-bold">{team.name}</h3>
+                                                        {isAdminMode && (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const newName = prompt('Novo nome para o time:', team.name);
+                                                                    if (newName && newName !== team.name) {
+                                                                        const updatedTeams = teams.map((t, tIdx) => tIdx === idx ? { ...t, name: newName } : t);
+                                                                        setTeams(updatedTeams);
+                                                                        saveData(players, finances, { teams: updatedTeams, currentMatchTeams, teamQueue });
+                                                                    }
+                                                                }}
+                                                                className="text-white/50 hover:text-white transition-colors"
+                                                            >
+                                                                <Icon name="edit-3" size={16} />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     <div className="p-4 space-y-2">
                                                         {team.players.map(p => (
@@ -3358,9 +3390,26 @@
                                         <div className="grid grid-cols-1 gap-4">
                                             {teams.map((team, idx) => (
                                                 <div key={idx} className="bg-zinc-50 p-4 rounded-2xl border border-zinc-200">
-                                                    <h3 className="font-bold text-zinc-900 mb-2 flex items-center gap-2">
-                                                        <div className="w-2 h-2 rounded-full bg-zinc-400"></div>
-                                                        {team.name}
+                                                    <h3 className="font-bold text-zinc-900 mb-2 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-2 h-2 rounded-full bg-zinc-400"></div>
+                                                            {team.name}
+                                                        </div>
+                                                        {isAdminMode && (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const newName = prompt('Novo nome para o time:', team.name);
+                                                                    if (newName && newName !== team.name) {
+                                                                        const updatedTeams = teams.map((t, tIdx) => tIdx === idx ? { ...t, name: newName } : t);
+                                                                        setTeams(updatedTeams);
+                                                                        saveData(players, finances, { teams: updatedTeams, currentMatchTeams, teamQueue });
+                                                                    }
+                                                                }}
+                                                                className="text-zinc-400 hover:text-zinc-600"
+                                                            >
+                                                                <Icon name="edit-3" size={14} />
+                                                            </button>
+                                                        )}
                                                     </h3>
                                                     <div className="flex flex-wrap gap-1">
                                                         {team.players.map((p, pIdx) => (
