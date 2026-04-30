@@ -266,13 +266,17 @@
                             setDiariaValue(rawDiaria);
                             setMonthlyStats(data.record.monthlyStats || {});
                             setBabaCount(data.record.babaCount || 0);
-                            setHighlights(data.record.highlights || {
-                                artilheiro: { name: '', photo: '', stats: '', message: '' },
-                                garcom: { name: '', photo: '', stats: '', message: '' },
-                                goleiro: { name: '', photo: '', stats: '', message: '' },
-                                zagueiro: { name: '', photo: '', stats: '', message: '' },
-                                timeDaSemana: { name: '', photo: '', stats: '', message: '' }
-                            });
+                            
+                            const loadedHighlights = data.record.highlights || {};
+                            const defaultHighlight = { name: '', photo: '', stats: '', message: '' };
+                            const sanitizedHighlights = {
+                                artilheiro: loadedHighlights.artilheiro || defaultHighlight,
+                                garcom: loadedHighlights.garcom || defaultHighlight,
+                                goleiro: loadedHighlights.goleiro || defaultHighlight,
+                                zagueiro: loadedHighlights.zagueiro || defaultHighlight,
+                                timeDaSemana: loadedHighlights.timeDaSemana || defaultHighlight
+                            };
+                            setHighlights(sanitizedHighlights);
                             
                             // Always filter confirmed list to only include paid players
                             let finalConfirmed = rawConfirmed.filter(id => {
@@ -1348,14 +1352,35 @@
                 
                 Object.entries(playerStats).forEach(([id, stats]) => {
                     if (id === 'anonymous') return;
-                    if (stats.goals > 0 || stats.assists > 0 || stats.gamesAsGK > 0) {
+                    if (stats.goals > 0 || stats.assists > 0 || stats.gamesAsGK > 0 || stats.defensePoints > 0) {
                         if (!newMonthlyStats[id]) {
-                            newMonthlyStats[id] = { name: stats.name, goals: 0, assists: 0, goalsConceded: 0, isGoalkeeper: stats.isGoalkeeper };
+                            newMonthlyStats[id] = { 
+                                name: stats.name, 
+                                goals: 0, 
+                                assists: 0, 
+                                goalsConceded: 0, 
+                                isGoalkeeper: stats.isGoalkeeper,
+                                defensePoints: 0,
+                                monthlyMatchesPlayed: 0,
+                                presences: 0,
+                                totalBabas: 0,
+                                level: stats.level || 3
+                            };
                         }
                         newMonthlyStats[id].goals += stats.goals;
                         newMonthlyStats[id].assists += stats.assists;
                         newMonthlyStats[id].goalsConceded = (newMonthlyStats[id].goalsConceded || 0) + (stats.goalsConceded || 0);
+                        newMonthlyStats[id].defensePoints = (newMonthlyStats[id].defensePoints || 0) + (stats.defensePoints || 0);
+                        newMonthlyStats[id].monthlyMatchesPlayed = (newMonthlyStats[id].monthlyMatchesPlayed || 0) + (stats.monthlyMatchesPlayed || 0);
                         newMonthlyStats[id].isGoalkeeper = stats.isGoalkeeper;
+                        
+                        // Encontrar jogador real para atualizar frequência e nível
+                        const realPlayer = players.find(p => p.id === id);
+                        if (realPlayer) {
+                            newMonthlyStats[id].presences = (realPlayer.presences || 0) + (isPlayerConfirmed(realPlayer) ? 1 : 0);
+                            newMonthlyStats[id].totalBabas = (realPlayer.totalBabas || 0) + 1;
+                            newMonthlyStats[id].level = realPlayer.level || 3;
+                        }
                     }
                 });
 
@@ -3533,255 +3558,291 @@
                         )}
 
                         {/* Ranking Tab */}
-                        {currentTab === 'ranking' && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <div className="text-center space-y-2">
-                                    <h2 className="text-3xl font-black text-zinc-900 tracking-tighter">HALL DA FAMA</h2>
-                                    <p className="text-zinc-500 text-sm font-medium">Destaques do Mês</p>
-                                </div>
-
-                                {/* Galeria de Destaques */}
-                                <div className="grid grid-cols-1 gap-6">
-                                    {['timeDaSemana', 'artilheiro', 'garcom', 'goleiro', 'zagueiro'].map((type) => {
-                                        const h = highlights[type];
-                                        const titles = {
-                                            timeDaSemana: 'Time da Semana',
-                                            artilheiro: 'Artilheiro do Mês',
-                                            garcom: 'Garçom do Mês',
-                                            goleiro: 'Goleiro do Mês',
-                                            zagueiro: 'Zagueiro do Mês'
+                        {currentTab === 'ranking' && (() => {
+                            const { playerStats: currentStats } = calculateStats();
+                            const mergedMonthlyStats = { ...monthlyStats };
+                            
+                            Object.entries(currentStats).forEach(([id, stats]) => {
+                                if (id === 'anonymous') return;
+                                if (stats.goals > 0 || stats.assists > 0 || stats.gamesAsGK > 0 || stats.defensePoints > 0) {
+                                    if (!mergedMonthlyStats[id]) {
+                                        mergedMonthlyStats[id] = { 
+                                            name: stats.name, 
+                                            goals: 0, 
+                                            assists: 0, 
+                                            goalsConceded: 0, 
+                                            isGoalkeeper: stats.isGoalkeeper,
+                                            defensePoints: 0,
+                                            monthlyMatchesPlayed: 0,
+                                            presences: 0,
+                                            totalBabas: 0,
+                                            level: stats.level || 3
                                         };
-                                        const icons = {
-                                            timeDaSemana: <Icon name="users" size={20} className="text-indigo-500" />,
-                                            artilheiro: <Icon name="flame" size={20} className="text-orange-500" />,
-                                            garcom: <Icon name="target" size={20} className="text-blue-500" />,
-                                            goleiro: <Icon name="shield" size={20} className="text-emerald-500" />,
-                                            zagueiro: <Icon name="shield-check" size={20} className="text-blue-500" />
-                                        };
+                                    }
+                                    mergedMonthlyStats[id] = {
+                                        ...mergedMonthlyStats[id],
+                                        goals: mergedMonthlyStats[id].goals + stats.goals,
+                                        assists: mergedMonthlyStats[id].assists + stats.assists,
+                                        goalsConceded: (mergedMonthlyStats[id].goalsConceded || 0) + (stats.goalsConceded || 0),
+                                        defensePoints: (mergedMonthlyStats[id].defensePoints || 0) + (stats.defensePoints || 0),
+                                        monthlyMatchesPlayed: (mergedMonthlyStats[id].monthlyMatchesPlayed || 0) + (stats.monthlyMatchesPlayed || 0),
+                                        level: stats.level || 3
+                                    };
+                                }
+                            });
 
-                                        return (
-                                            <motion.div 
-                                                key={type}
-                                                whileHover={{ y: -5 }}
-                                                className="bg-white rounded-[2.5rem] border-4 border-zinc-100 shadow-xl overflow-hidden"
-                                            >
-                                                <div className="p-6 space-y-4">
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-2">
-                                                            {icons[type]}
-                                                            <h3 className="text-lg font-black text-zinc-900 uppercase tracking-tighter">{titles[type]}</h3>
+                            return (
+                                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <div className="text-center space-y-2">
+                                        <h2 className="text-3xl font-black text-zinc-900 tracking-tighter">HALL DA FAMA</h2>
+                                        <p className="text-zinc-500 text-sm font-medium">Destaques do Mês</p>
+                                    </div>
+
+                                    {/* Galeria de Destaques */}
+                                    <div className="grid grid-cols-1 gap-6">
+                                        {['timeDaSemana', 'artilheiro', 'garcom', 'goleiro', 'zagueiro'].map((type) => {
+                                            const h = highlights[type] || { name: '', photo: '', stats: '', message: '' };
+                                            const titles = {
+                                                timeDaSemana: 'Time da Semana',
+                                                artilheiro: 'Artilheiro do Mês',
+                                                garcom: 'Garçom do Mês',
+                                                goleiro: 'Goleiro do Mês',
+                                                zagueiro: 'Zagueiro do Mês'
+                                            };
+                                            const icons = {
+                                                timeDaSemana: <Icon name="users" size={20} className="text-indigo-500" />,
+                                                artilheiro: <Icon name="flame" size={20} className="text-orange-500" />,
+                                                garcom: <Icon name="target" size={20} className="text-blue-500" />,
+                                                goleiro: <Icon name="shield" size={20} className="text-emerald-500" />,
+                                                zagueiro: <Icon name="shield-check" size={20} className="text-blue-500" />
+                                            };
+
+                                            return (
+                                                <motion.div 
+                                                    key={type}
+                                                    whileHover={{ y: -5 }}
+                                                    className="bg-white rounded-[2.5rem] border-4 border-zinc-100 shadow-xl overflow-hidden"
+                                                >
+                                                    <div className="p-6 space-y-4">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                {icons[type]}
+                                                                <h3 className="text-lg font-black text-zinc-900 uppercase tracking-tighter">{titles[type]}</h3>
+                                                            </div>
+                                                            {isAdminMode && (
+                                                                <button 
+                                                                    onClick={() => setShowHighlightModal(type)}
+                                                                    className="p-2 bg-zinc-100 rounded-full text-zinc-500 hover:bg-zinc-200"
+                                                                >
+                                                                    <Icon name="edit-3" size={16} />
+                                                                </button>
+                                                            )}
                                                         </div>
-                                                        {isAdminMode && (
-                                                            <button 
-                                                                onClick={() => setShowHighlightModal(type)}
-                                                                className="p-2 bg-zinc-100 rounded-full text-zinc-500 hover:bg-zinc-200"
-                                                            >
-                                                                <Icon name="edit-3" size={16} />
-                                                            </button>
-                                                        )}
-                                                    </div>
 
-                                                    <div className="relative aspect-square rounded-3xl overflow-hidden bg-zinc-100 border-2 border-zinc-50">
-                                                        {h.photo ? (
-                                                            <img src={h.photo} alt={h.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                                        ) : (
-                                                            <div className="w-full h-full flex flex-col items-center justify-center text-zinc-300">
-                                                                <Icon name="user" size={64} />
-                                                                <p className="text-[10px] font-bold uppercase mt-2">Aguardando Foto</p>
+                                                        <div className="relative aspect-square rounded-3xl overflow-hidden bg-zinc-100 border-2 border-zinc-50">
+                                                            {h.photo ? (
+                                                                <img src={h.photo} alt={h.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex flex-col items-center justify-center text-zinc-300">
+                                                                    <Icon name="user" size={64} />
+                                                                    <p className="text-[10px] font-bold uppercase mt-2">Aguardando Foto</p>
+                                                                </div>
+                                                            )}
+                                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 pt-12">
+                                                                <p className="text-white text-2xl font-black tracking-tighter">{h.name || '---'}</p>
+                                                                <p className="text-emerald-400 text-sm font-black uppercase tracking-widest">{h.stats || '---'}</p>
+                                                            </div>
+                                                        </div>
+
+                                                        {h.message && (
+                                                            <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100 italic text-zinc-600 text-sm text-center">
+                                                                "{h.message}"
                                                             </div>
                                                         )}
-                                                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 pt-12">
-                                                            <p className="text-white text-2xl font-black tracking-tighter">{h.name || '---'}</p>
-                                                            <p className="text-emerald-400 text-sm font-black uppercase tracking-widest">{h.stats || '---'}</p>
-                                                        </div>
                                                     </div>
+                                                </motion.div>
+                                            );
+                                        })}
+                                    </div>
 
-                                                    {h.message && (
-                                                        <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100 italic text-zinc-600 text-sm text-center">
-                                                            "{h.message}"
-                                                        </div>
+                                    {/* Ranking Mensal (Ciclo de 4 Babas) */}
+                                    <div id="ranking-mensal" className="bg-zinc-900 p-8 rounded-[2.5rem] shadow-2xl space-y-8">
+                                        <div className="flex items-center justify-between">
+                                            <div className="space-y-1">
+                                                <h3 className="text-white font-black text-2xl tracking-tighter uppercase">Ranking Mensal</h3>
+                                                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Ciclo de 4 Babas</p>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <button 
+                                                    onClick={(e) => captureAndShare('ranking-mensal', 'Ranking-Mensal', e)}
+                                                    className="p-3 bg-zinc-800 border border-zinc-700 rounded-2xl text-zinc-400 hover:text-white transition-colors"
+                                                    title="Compartilhar como Imagem"
+                                                >
+                                                    <Icon name="image" size={20} />
+                                                </button>
+                                                <div className="bg-zinc-800 px-4 py-2 rounded-full border border-zinc-700">
+                                                    <span className="text-emerald-400 text-xs font-black uppercase tracking-widest">Baba {babaCount} de 4</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-8">
+                                            <div className="space-y-6">
+                                                <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                    <Icon name="flame" size={16} className="text-orange-500" /> Artilharia do Mês
+                                                 </h4>
+                                                <div className="space-y-3">
+                                                    {Object.values(mergedMonthlyStats)
+                                                        .filter(p => p.goals > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
+                                                        .sort((a, b) => {
+                                                            if (b.goals !== a.goals) return b.goals - a.goals;
+                                                            const avgA = a.monthlyMatchesPlayed > 0 ? a.goals / a.monthlyMatchesPlayed : 0;
+                                                            const avgB = b.monthlyMatchesPlayed > 0 ? b.goals / b.monthlyMatchesPlayed : 0;
+                                                            return avgB - avgA;
+                                                        })
+                                                        .slice(0, 10)
+                                                        .map((p, i) => (
+                                                            <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                        {getPositionTag(p.level) && (
+                                                                            <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
+                                                                                {getPositionTag(p.level)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-col items-end">
+                                                                    <span className="text-orange-400 font-black">{p.goals} GOLS</span>
+                                                                    <span className="text-[8px] text-zinc-500 font-bold">MÉDIA: {(p.goals / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    }
+                                                    {Object.values(mergedMonthlyStats).filter(p => p.goals > 0).length === 0 && (
+                                                        <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
                                                     )}
                                                 </div>
-                                            </motion.div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Ranking Mensal (Ciclo de 4 Babas) */}
-                                <div id="ranking-mensal" className="bg-zinc-900 p-8 rounded-[2.5rem] shadow-2xl space-y-8">
-                                    <div className="flex items-center justify-between">
-                                        <div className="space-y-1">
-                                            <h3 className="text-white font-black text-2xl tracking-tighter uppercase">Ranking Mensal</h3>
-                                            <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">Ciclo de 4 Babas</p>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <button 
-                                                onClick={(e) => captureAndShare('ranking-mensal', 'Ranking-Mensal', e)}
-                                                className="p-3 bg-zinc-800 border border-zinc-700 rounded-2xl text-zinc-400 hover:text-white transition-colors"
-                                                title="Compartilhar como Imagem"
-                                            >
-                                                <Icon name="image" size={20} />
-                                            </button>
-                                            <div className="bg-zinc-800 px-4 py-2 rounded-full border border-zinc-700">
-                                                <span className="text-emerald-400 text-xs font-black uppercase tracking-widest">Baba {babaCount} de 4</span>
                                             </div>
-                                        </div>
-                                    </div>
 
-                                    <div className="grid grid-cols-1 gap-8">
-                                        <div className="space-y-6">
-                                            <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                                <Icon name="flame" size={16} className="text-orange-500" /> Artilharia do Mês
-                                             </h4>
-                                            <div className="space-y-3">
-                                                {Object.values(monthlyStats)
-                                                    .filter(p => p.goals > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
-                                                    .sort((a, b) => {
-                                                        if (b.goals !== a.goals) return b.goals - a.goals;
-                                                        const avgA = a.monthlyMatchesPlayed > 0 ? a.goals / a.monthlyMatchesPlayed : 0;
-                                                        const avgB = b.monthlyMatchesPlayed > 0 ? b.goals / b.monthlyMatchesPlayed : 0;
-                                                        return avgB - avgA;
-                                                    })
-                                                    .slice(0, 10)
-                                                    .map((p, i) => (
-                                                        <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-sm font-bold text-zinc-200">{p.name}</span>
-                                                                    {getPositionTag(p.level) && (
-                                                                        <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
-                                                                            {getPositionTag(p.level)}
-                                                                        </span>
-                                                                    )}
+                                            <div className="space-y-6">
+                                                <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                    <Icon name="target" size={16} className="text-blue-500" /> Assistências do Mês
+                                                </h4>
+                                                <div className="space-y-3">
+                                                    {Object.values(mergedMonthlyStats)
+                                                        .filter(p => p.assists > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
+                                                        .sort((a, b) => {
+                                                            if (b.assists !== a.assists) return b.assists - a.assists;
+                                                            const avgA = a.monthlyMatchesPlayed > 0 ? a.assists / a.monthlyMatchesPlayed : 0;
+                                                            const avgB = b.monthlyMatchesPlayed > 0 ? b.assists / b.monthlyMatchesPlayed : 0;
+                                                            return avgB - avgA;
+                                                        })
+                                                        .slice(0, 10)
+                                                        .map((p, i) => (
+                                                            <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                        {getPositionTag(p.level) && (
+                                                                            <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
+                                                                                {getPositionTag(p.level)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-col items-end">
+                                                                    <span className="text-blue-400 font-black">{p.assists} AST</span>
+                                                                    <span className="text-[8px] text-zinc-500 font-bold">MÉDIA: {(p.assists / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-orange-400 font-black">{p.goals} GOLS</span>
-                                                                <span className="text-[8px] text-zinc-500 font-bold">MÉDIA: {(p.goals / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                }
-                                                {Object.values(monthlyStats).filter(p => p.goals > 0).length === 0 && (
-                                                    <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
-                                                )}
+                                                        ))
+                                                    }
+                                                    {Object.values(mergedMonthlyStats).filter(p => p.assists > 0).length === 0 && (
+                                                        <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
 
-                                        <div className="space-y-6">
-                                            <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                                <Icon name="target" size={16} className="text-blue-500" /> Assistências do Mês
-                                            </h4>
-                                            <div className="space-y-3">
-                                                {Object.values(monthlyStats)
-                                                    .filter(p => p.assists > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
-                                                    .sort((a, b) => {
-                                                        if (b.assists !== a.assists) return b.assists - a.assists;
-                                                        const avgA = a.monthlyMatchesPlayed > 0 ? a.assists / a.monthlyMatchesPlayed : 0;
-                                                        const avgB = b.monthlyMatchesPlayed > 0 ? b.assists / b.monthlyMatchesPlayed : 0;
-                                                        return avgB - avgA;
-                                                    })
-                                                    .slice(0, 10)
-                                                    .map((p, i) => (
-                                                        <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-sm font-bold text-zinc-200">{p.name}</span>
-                                                                    {getPositionTag(p.level) && (
-                                                                        <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
-                                                                            {getPositionTag(p.level)}
-                                                                        </span>
-                                                                    )}
+                                            <div className="space-y-6">
+                                                <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                    <Icon name="shield" size={16} className="text-emerald-500" /> Goleiros do Mês (Gols Sofridos)
+                                                </h4>
+                                                <div className="space-y-3">
+                                                    {Object.values(mergedMonthlyStats)
+                                                        .filter(p => p.isGoalkeeper && (p.goalsConceded !== undefined || p.gamesAsGK > 0) && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
+                                                        .sort((a, b) => (a.goalsConceded || 0) - (b.goalsConceded || 0))
+                                                        .slice(0, 10)
+                                                        .map((p, i) => (
+                                                            <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                        {getPositionTag(p.level) && (
+                                                                            <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
+                                                                                {getPositionTag(p.level)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-col items-end">
+                                                                    <span className="text-emerald-400 font-black">{p.goalsConceded || 0} GOLS</span>
+                                                                    <span className="text-[8px] text-zinc-500 uppercase font-bold">Sofridos</span>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-blue-400 font-black">{p.assists} AST</span>
-                                                                <span className="text-[8px] text-zinc-500 font-bold">MÉDIA: {(p.assists / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                }
-                                                {Object.values(monthlyStats).filter(p => p.assists > 0).length === 0 && (
-                                                    <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
-                                                )}
+                                                        ))
+                                                    }
+                                                    {Object.values(mergedMonthlyStats).filter(p => p.isGoalkeeper).length === 0 && (
+                                                        <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
 
-                                        <div className="space-y-6">
-                                            <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                                <Icon name="shield" size={16} className="text-emerald-500" /> Goleiros do Mês (Gols Sofridos)
-                                            </h4>
-                                            <div className="space-y-3">
-                                                {Object.values(monthlyStats)
-                                                    .filter(p => p.isGoalkeeper && p.goalsConceded !== undefined && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
-                                                    .sort((a, b) => (a.goalsConceded || 0) - (b.goalsConceded || 0))
-                                                    .slice(0, 10)
-                                                    .map((p, i) => (
-                                                        <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-sm font-bold text-zinc-200">{p.name}</span>
-                                                                    {getPositionTag(p.level) && (
-                                                                        <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">
-                                                                            {getPositionTag(p.level)}
-                                                                        </span>
-                                                                    )}
+                                            <div className="space-y-6">
+                                                <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                                    <Icon name="shield-check" size={16} className="text-blue-500" /> Melhor Defesa (ZC - Ranking)
+                                                </h4>
+                                                <div className="space-y-3">
+                                                    {Object.values(mergedMonthlyStats)
+                                                        .filter(p => p.level === 5 && p.defensePoints > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
+                                                        .sort((a, b) => {
+                                                            if (b.defensePoints !== a.defensePoints) return (b.defensePoints || 0) - (a.defensePoints || 0);
+                                                            const avgA = a.monthlyMatchesPlayed > 0 ? a.defensePoints / a.monthlyMatchesPlayed : 0;
+                                                            const avgB = b.monthlyMatchesPlayed > 0 ? b.defensePoints / b.monthlyMatchesPlayed : 0;
+                                                            return avgB - avgA;
+                                                        })
+                                                        .slice(0, 10)
+                                                        .map((p, i) => (
+                                                            <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-sm font-bold text-zinc-200">{p.name}</span>
+                                                                        <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">ZC</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-col items-end">
+                                                                    <span className="text-blue-400 font-black">{p.defensePoints || 0} PTS</span>
+                                                                    <span className="text-[8px] text-zinc-500 uppercase font-bold">Média: {(p.defensePoints / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-emerald-400 font-black">{p.goalsConceded || 0} GOLS</span>
-                                                                <span className="text-[8px] text-zinc-500 uppercase font-bold">Sofridos</span>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                }
-                                                {Object.values(monthlyStats).filter(p => p.isGoalkeeper).length === 0 && (
-                                                    <p className="text-sm text-zinc-600 italic text-center py-4">Aguardando dados do ciclo...</p>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-6">
-                                            <h4 className="text-xs font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                                <Icon name="shield-check" size={16} className="text-blue-500" /> Melhor Defesa (ZC - Ranking)
-                                            </h4>
-                                            <div className="space-y-3">
-                                                {Object.values(monthlyStats)
-                                                    .filter(p => p.level === 5 && p.defensePoints > 0 && (p.totalBabas > 0 ? (p.presences / p.totalBabas) >= 0.5 : true))
-                                                    .sort((a, b) => {
-                                                        if (b.defensePoints !== a.defensePoints) return (b.defensePoints || 0) - (a.defensePoints || 0);
-                                                        const avgA = a.monthlyMatchesPlayed > 0 ? a.defensePoints / a.monthlyMatchesPlayed : 0;
-                                                        const avgB = b.monthlyMatchesPlayed > 0 ? b.defensePoints / b.monthlyMatchesPlayed : 0;
-                                                        return avgB - avgA;
-                                                    })
-                                                    .slice(0, 10)
-                                                    .map((p, i) => (
-                                                        <div key={i} className="flex items-center justify-between bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50">
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-zinc-500 font-black text-xs w-4">{i + 1}</span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-sm font-bold text-zinc-200">{p.name}</span>
-                                                                    <span className="text-[7px] font-black bg-white text-zinc-900 px-1 rounded-[2px] leading-tight">ZC</span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-blue-400 font-black">{p.defensePoints || 0} PTS</span>
-                                                                <span className="text-[8px] text-zinc-500 uppercase font-bold">Média: {(p.defensePoints / (p.monthlyMatchesPlayed || 1)).toFixed(1)}</span>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                }
-                                                {Object.values(monthlyStats).filter(p => p.level === 5 && p.defensePoints > 0).length === 0 && (
-                                                    <p className="text-sm text-zinc-600 italic text-center py-4">Nenhum dado defensivo disponível ainda.</p>
-                                                )}
+                                                        ))
+                                                    }
+                                                    {Object.values(mergedMonthlyStats).filter(p => p.level === 5 && p.defensePoints > 0).length === 0 && (
+                                                        <p className="text-sm text-zinc-600 italic text-center py-4">Nenhum dado defensivo disponível ainda.</p>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            );
+                        })()}
+                        {/* Final do Ranking Tab */}
                         )}
                     </main>
 
