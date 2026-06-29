@@ -45,6 +45,16 @@
         const { useState, useEffect, useRef } = React;
         const motion = (window.Motion && window.Motion.motion) || (window.framerMotion && window.framerMotion.motion) || { div: 'div' };
 
+        // Safe localStorage wrapper to prevent crashes in sandboxed iframes/incognito
+        const safeStorage = {
+            getItem: (key) => {
+                try { return localStorage.getItem(key); } catch (e) { return null; }
+            },
+            setItem: (key, val) => {
+                try { localStorage.setItem(key, val); } catch (e) {}
+            }
+        };
+
         // Verificação de dependências
         if (!window.lucide || !window.React || !window.ReactDOM) {
             console.error("Erro: Algumas dependências (Lucide, React ou ReactDOM) não foram carregadas corretamente.");
@@ -95,7 +105,7 @@
         function App() {
             const [players, setPlayers] = useState([]);
             const [finances, setFinances] = useState([]);
-            const [currentUser, setCurrentUser] = useState(localStorage.getItem('futamigos_current_user'));
+            const [currentUser, setCurrentUser] = useState(safeStorage.getItem('futamigos_current_user'));
             const [currentTab, setCurrentTab] = useState('home');
             const [adminSubTab, setAdminSubTab] = useState('finance');
             const [isAdminMode, setIsAdminMode] = useState(false);
@@ -545,7 +555,7 @@
                 if (authorizedPasswords.includes(passwordInput) || commissionMember) {
                     const user = commissionMember ? commissionMember.name : passwordInput;
                     setCurrentUser(user);
-                    localStorage.setItem('futamigos_current_user', user);
+                    safeStorage.setItem('futamigos_current_user', user);
                     
                     // Update access history
                     const newAccess = {
