@@ -115,7 +115,28 @@
             const [isLoading, setIsLoading] = useState(true);
             const [hasLoadedSuccessfully, setHasLoadedSuccessfully] = useState(false);
             const [isRecovering, setIsRecovering] = useState(false);
+            const [isOffline, setIsOffline] = useState(false);
             const dataLoadedRef = useRef(false);
+
+            // Safe localStorage backup helpers
+            const saveToLocalBackup = (data) => {
+                if (!data) return;
+                try {
+                    safeStorage.setItem('futamigos_db_backup', JSON.stringify(data));
+                } catch (e) {
+                    console.error("Erro ao salvar backup local:", e);
+                }
+            };
+
+            const loadFromLocalBackup = () => {
+                try {
+                    const backup = safeStorage.getItem('futamigos_db_backup');
+                    return backup ? JSON.parse(backup) : null;
+                } catch (e) {
+                    console.error("Erro ao ler backup local:", e);
+                    return null;
+                }
+            };
             
             const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
             const [showAddGuestForm, setShowAddGuestForm] = useState(false);
@@ -231,6 +252,129 @@
                 saveData(players, finances, { teams: updatedTeams, currentMatchTeams, teamQueue });
             };
 
+            // Função para carregar o payload de dados no estado do React
+            function loadDataIntoState(record, isBackup = false) {
+                const rawPlayers = record.players || [];
+                const rawFinances = record.finances || [];
+                const rawHistory = record.matchHistory || [];
+                const rawGuests = record.guests || [];
+                const rawConfirmed = record.confirmedPlayerIds || [];
+                const rawAbsent = record.absentCommissionIds || [];
+                const rawAccessHistory = record.accessHistory || [];
+                const rawMensalidade = record.mensalidadeValue || 26;
+                const rawDiaria = record.diariaValue || 8;
+                
+                // Check for expirations
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                let expirationsChanged = false;
+                const processedPlayers = rawPlayers.map(p => {
+                    if (p.type === 'mensalista' && p.paymentStatus === 'pago' && p.dueDate && p.role !== 'commission') {
+                        const [year, month, day] = p.dueDate.split('-').map(Number);
+                        const dueDate = new Date(year, month - 1, day);
+                        if (dueDate < today) {
+                            expirationsChanged = true;
+                            return { ...p, paymentStatus: 'não', punishmentCount: p.punishmentCount || 0 };
+                        }
+                    }
+                    return { ...p, punishmentCount: p.punishmentCount || 0 };
+                });
+
+                setPlayers(processedPlayers);
+                setFinances(rawFinances);
+                setMatchHistory(rawHistory);
+                setGuests(rawGuests);
+                setAbsentCommissionIds(rawAbsent);
+                setAccessHistory(rawAccessHistory);
+                setMensalidadeValue(rawMensalidade);
+                setDiariaValue(rawDiaria);
+                setMonthlyStats(record.monthlyStats || {});
+                setBabaCount(record.babaCount || 0);
+                
+                const loadedHighlights = record.highlights || {};
+                const defaultHighlight = { name: '', photo: '', stats: '', message: '' };
+                const sanitizedHighlights = {
+                    artilheiro: loadedHighlights.artilheiro || defaultHighlight,
+                    garcom: loadedHighlights.garcom || defaultHighlight,
+                    goleiro: loadedHighlights.goleiro || defaultHighlight,
+                    zagueiro: loadedHighlights.zagueiro || defaultHighlight,
+                    timeDaSemana: loadedHighlights.timeDaSemana || defaultHighlight
+                };
+                setHighlights(sanitizedHighlights);
+                
+                // Always filter confirmed list to only include paid players
+                let finalConfirmed = rawConfirmed.filter(id => {
+                    const player = processedPlayers.find(p => p.id === id);
+                    return player && player.paymentStatus === 'pago';
+                });
+
+                if (finalConfirmed.length === 0 && processedPlayers.length > 0 && !record.lastDraw) {
+                    const defaultConfirmed = processedPlayers.filter(p => ((p.type === 'mensalista' && p.paymentStatus === 'pago') || p.role === 'commission') && !p.isPunished).map(p => p.id);
+                    setConfirmedPlayerIds(defaultConfirmed);
+                } else {
+                    setConfirmedPlayerIds(finalConfirmed);
+                }
+
+                setShowDaySummary(record.showDaySummary || false);
+
+                if (record.lastDraw) {
+                    if (record.lastDraw.teams) {
+                        setTeams(record.lastDraw.teams);
+                        if (record.lastDraw.currentMatchTeams) {
+                            setCurrentMatchTeams(record.lastDraw.currentMatchTeams);
+                        }
+                        if (record.lastDraw.teamQueue) {
+                            setTeamQueue(record.lastDraw.teamQueue);
+                        }
+                        if (record.lastDraw.playersInDrawIds) {
+                            setPlayersInDrawIds(record.lastDraw.playersInDrawIds);
+                        }
+                        if (record.lastDraw.currentLoans) {
+                            setCurrentLoans(record.lastDraw.currentLoans);
+                        }
+                        if (record.lastDraw.loanedPlayersIdsByTeam) {
+                            setLoanedPlayersIdsByTeam(record.lastDraw.loanedPlayersIdsByTeam);
+                        }
+                    } else if (record.lastDraw.teamA) {
+                        setTeams([
+                            { ...record.lastDraw.teamA, name: 'Time 1' },
+                            { ...record.lastDraw.teamB, name: 'Time 2' }
+                        ]);
+                    }
+                } else {
+                    setTeams([]);
+                    setCurrentMatchTeams([0, 1]);
+                    setTeamQueue([]);
+                    setPlayersInDrawIds([]);
+                    setCurrentLoans([]);
+                    setLoanedPlayersIdsByTeam({});
+                }
+
+                dataLoadedRef.current = true;
+                setHasLoadedSuccessfully(true);
+
+                if (isBackup) {
+                    setIsOffline(true);
+                } else {
+                    setIsOffline(false);
+                }
+
+                if (expirationsChanged && !isBackup) {
+                    saveData(processedPlayers, rawFinances, record.lastDraw, rawHistory, record.showDaySummary, rawGuests, finalConfirmed, rawMensalidade, rawDiaria, rawAbsent);
+                }
+            }
+
+            function attemptLoadFromBackup(reason) {
+                const backup = loadFromLocalBackup();
+                if (backup) {
+                    console.warn(`Carregando dados locais de backup devido a: ${reason}`);
+                    loadDataIntoState(backup, true);
+                    alert(`Sem conexão com o servidor (${reason}).\nExibindo a última versão dos dados salva localmente no seu aparelho.`);
+                } else {
+                    alert(`Não foi possível conectar ao servidor (${reason}) e nenhum backup local foi encontrado.\nVerifique sua conexão de rede.`);
+                }
+            }
+
             // Carregar dados do JSONbin
             useEffect(() => {
                 const fetchData = async () => {
@@ -240,108 +384,19 @@
                         });
                         if (response.ok) {
                             const data = await response.json();
-                            const rawPlayers = data.record.players || [];
-                            const rawFinances = data.record.finances || [];
-                            const rawHistory = data.record.matchHistory || [];
-                            const rawGuests = data.record.guests || [];
-                            const rawConfirmed = data.record.confirmedPlayerIds || [];
-                            const rawAbsent = data.record.absentCommissionIds || [];
-                            const rawAccessHistory = data.record.accessHistory || [];
-                            const rawMensalidade = data.record.mensalidadeValue || 26;
-                            const rawDiaria = data.record.diariaValue || 8;
+                            const record = data.record || {};
                             
-                            // Check for expirations
-                            const today = new Date();
-                            today.setHours(0, 0, 0, 0);
-                            let expirationsChanged = false;
-                            const processedPlayers = rawPlayers.map(p => {
-                                if (p.type === 'mensalista' && p.paymentStatus === 'pago' && p.dueDate && p.role !== 'commission') {
-                                    const [year, month, day] = p.dueDate.split('-').map(Number);
-                                    const dueDate = new Date(year, month - 1, day);
-                                    if (dueDate < today) {
-                                        expirationsChanged = true;
-                                        return { ...p, paymentStatus: 'não', punishmentCount: p.punishmentCount || 0 };
-                                    }
-                                }
-                                return { ...p, punishmentCount: p.punishmentCount || 0 };
-                            });
-
-                            setPlayers(processedPlayers);
-                            setFinances(rawFinances);
-                            setMatchHistory(rawHistory);
-                            setGuests(rawGuests);
-                            setAbsentCommissionIds(rawAbsent);
-                            setAccessHistory(rawAccessHistory);
-                            setMensalidadeValue(rawMensalidade);
-                            setDiariaValue(rawDiaria);
-                            setMonthlyStats(data.record.monthlyStats || {});
-                            setBabaCount(data.record.babaCount || 0);
+                            // Salva backup local
+                            saveToLocalBackup(record);
                             
-                            const loadedHighlights = data.record.highlights || {};
-                            const defaultHighlight = { name: '', photo: '', stats: '', message: '' };
-                            const sanitizedHighlights = {
-                                artilheiro: loadedHighlights.artilheiro || defaultHighlight,
-                                garcom: loadedHighlights.garcom || defaultHighlight,
-                                goleiro: loadedHighlights.goleiro || defaultHighlight,
-                                zagueiro: loadedHighlights.zagueiro || defaultHighlight,
-                                timeDaSemana: loadedHighlights.timeDaSemana || defaultHighlight
-                            };
-                            setHighlights(sanitizedHighlights);
-                            
-                            // Always filter confirmed list to only include paid players
-                            let finalConfirmed = rawConfirmed.filter(id => {
-                                const player = processedPlayers.find(p => p.id === id);
-                                return player && player.paymentStatus === 'pago';
-                            });
-
-                            if (finalConfirmed.length === 0 && processedPlayers.length > 0 && !data.record.lastDraw) {
-                                const defaultConfirmed = processedPlayers.filter(p => ((p.type === 'mensalista' && p.paymentStatus === 'pago') || p.role === 'commission') && !p.isPunished).map(p => p.id);
-                                setConfirmedPlayerIds(defaultConfirmed);
-                            } else {
-                                setConfirmedPlayerIds(finalConfirmed);
-                            }
-
-                            setShowDaySummary(data.record.showDaySummary || false);
-
-                                if (data.record.lastDraw) {
-                                    if (data.record.lastDraw.teams) {
-                                        setTeams(data.record.lastDraw.teams);
-                                        if (data.record.lastDraw.currentMatchTeams) {
-                                            setCurrentMatchTeams(data.record.lastDraw.currentMatchTeams);
-                                        }
-                                        if (data.record.lastDraw.teamQueue) {
-                                            setTeamQueue(data.record.lastDraw.teamQueue);
-                                        }
-                                        if (data.record.lastDraw.playersInDrawIds) {
-                                            setPlayersInDrawIds(data.record.lastDraw.playersInDrawIds);
-                                        }
-                                        if (data.record.lastDraw.currentLoans) {
-                                            setCurrentLoans(data.record.lastDraw.currentLoans);
-                                        }
-                                        if (data.record.lastDraw.loanedPlayersIdsByTeam) {
-                                            setLoanedPlayersIdsByTeam(data.record.lastDraw.loanedPlayersIdsByTeam);
-                                        }
-                                    } else if (data.record.lastDraw.teamA) {
-                                        setTeams([
-                                            { ...data.record.lastDraw.teamA, name: 'Time 1' },
-                                            { ...data.record.lastDraw.teamB, name: 'Time 2' }
-                                        ]);
-                                    }
-                                }
-
-                                dataLoadedRef.current = true;
-                                setHasLoadedSuccessfully(true);
-
-                                if (expirationsChanged) {
-                                    saveData(processedPlayers, rawFinances, data.record.lastDraw, rawHistory, data.record.showDaySummary, rawGuests, finalConfirmed, rawMensalidade, rawDiaria, rawAbsent);
-                                }
-                            } else {
-                                console.error("Erro na resposta do servidor:", response.status);
-                                alert("Erro ao conectar com o banco de dados. Os dados não foram carregados. Por favor, verifique sua conexão ou contate o suporte.");
-                            }
-                        } catch (error) {
+                            loadDataIntoState(record, false);
+                        } else {
+                            console.error("Erro na resposta do servidor:", response.status);
+                            attemptLoadFromBackup(`Erro de resposta ${response.status}`);
+                        }
+                    } catch (error) {
                         console.error("Erro ao carregar dados:", error);
-                        alert("Ocorreu um erro crítico ao carregar seus dados. Por segurança, o salvamento automático foi desativado nesta sessão.");
+                        attemptLoadFromBackup("falha de conexão");
                     } finally {
                         setIsLoading(false);
                     }
@@ -349,79 +404,124 @@
                 fetchData();
             }, []);
 
-            // Salvar dados no JSONbin
-            const saveData = async (newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory, newCurrentLoans, newLoanHistory, newMonthlyStats, newBabaCount, newHighlights) => {
+            // Salvar dados no JSONbin com salvamento local redundante e detecção de erros de rede
+            async function saveData(newPlayers, newFinances, lastDraw, newHistory, newShowSummary, newGuests, newConfirmedIds, newMensalidade, newDiaria, newAbsentIds, newAccessHistory, newCurrentLoans, newLoanHistory, newMonthlyStats, newBabaCount, newHighlights) {
                 if (!dataLoadedRef.current) {
                     console.warn("Tentativa de salvamento bloqueada: O banco de dados ainda não foi carregado.");
                     return;
                 }
-                try {
-                    // Pruning logic to save space in JSONbin
-                    const prunedFinances = (newFinances !== undefined ? newFinances : finances).slice(-200); // Keep last 200 financial records
-                    const prunedAccessHistory = (newAccessHistory !== undefined ? newAccessHistory : accessHistory).slice(-50); // Keep last 50 access logs
-                    
-                    let currentDraw = null;
-                    if (lastDraw !== undefined) {
-                        if (lastDraw === null) {
-                            currentDraw = null;
-                        } else {
-                            currentDraw = {
-                                teams: lastDraw.teams !== undefined ? lastDraw.teams : teams,
-                                currentMatchTeams: lastDraw.currentMatchTeams !== undefined ? lastDraw.currentMatchTeams : currentMatchTeams,
-                                teamQueue: lastDraw.teamQueue !== undefined ? lastDraw.teamQueue : teamQueue,
-                                playersInDrawIds: lastDraw.playersInDrawIds !== undefined ? lastDraw.playersInDrawIds : playersInDrawIds,
-                                currentLoans: lastDraw.currentLoans !== undefined ? lastDraw.currentLoans : (newCurrentLoans || currentLoans),
-                                loanedPlayersIdsByTeam: lastDraw.loanedPlayersIdsByTeam !== undefined ? lastDraw.loanedPlayersIdsByTeam : (newLoanHistory || loanedPlayersIdsByTeam)
-                            };
-                        }
-                    } else if (teams.length > 0) {
-                        currentDraw = { teams, currentMatchTeams, teamQueue, playersInDrawIds, currentLoans: newCurrentLoans || currentLoans, loanedPlayersIdsByTeam: newLoanHistory || loanedPlayersIdsByTeam };
-                    }
 
-                    const historyToSave = (newHistory !== undefined ? newHistory : matchHistory).slice(-50); // Keep last 50 matches (usually just one day)
-                    const summaryToSave = newShowSummary !== undefined ? newShowSummary : showDaySummary;
-                    const guestsToSave = newGuests !== undefined ? newGuests : guests;
-                    const confirmedToSave = newConfirmedIds !== undefined ? newConfirmedIds : confirmedPlayerIds;
-                    const mensalidadeToSave = newMensalidade !== undefined ? newMensalidade : mensalidadeValue;
-                    const diariaToSave = newDiaria !== undefined ? newDiaria : diariaValue;
-                    const absentToSave = newAbsentIds !== undefined ? newAbsentIds : absentCommissionIds;
-                    const monthlyStatsToSave = newMonthlyStats !== undefined ? newMonthlyStats : monthlyStats;
-                    const babaCountToSave = newBabaCount !== undefined ? newBabaCount : babaCount;
-                    const highlightsToSave = newHighlights !== undefined ? newHighlights : highlights;
-                    
+                const prunedFinances = (newFinances !== undefined ? newFinances : finances).slice(-200);
+                const prunedAccessHistory = (newAccessHistory !== undefined ? newAccessHistory : accessHistory).slice(-50);
+                
+                let currentDraw = null;
+                if (lastDraw !== undefined) {
+                    if (lastDraw === null) {
+                        currentDraw = null;
+                    } else {
+                        currentDraw = {
+                            teams: lastDraw.teams !== undefined ? lastDraw.teams : teams,
+                            currentMatchTeams: lastDraw.currentMatchTeams !== undefined ? lastDraw.currentMatchTeams : currentMatchTeams,
+                            teamQueue: lastDraw.teamQueue !== undefined ? lastDraw.teamQueue : teamQueue,
+                            playersInDrawIds: lastDraw.playersInDrawIds !== undefined ? lastDraw.playersInDrawIds : playersInDrawIds,
+                            currentLoans: lastDraw.currentLoans !== undefined ? lastDraw.currentLoans : (newCurrentLoans || currentLoans),
+                            loanedPlayersIdsByTeam: lastDraw.loanedPlayersIdsByTeam !== undefined ? lastDraw.loanedPlayersIdsByTeam : (newLoanHistory || loanedPlayersIdsByTeam)
+                        };
+                    }
+                } else if (teams.length > 0) {
+                    currentDraw = { teams, currentMatchTeams, teamQueue, playersInDrawIds, currentLoans: newCurrentLoans || currentLoans, loanedPlayersIdsByTeam: newLoanHistory || loanedPlayersIdsByTeam };
+                }
+
+                const historyToSave = (newHistory !== undefined ? newHistory : matchHistory).slice(-50);
+                const summaryToSave = newShowSummary !== undefined ? newShowSummary : showDaySummary;
+                const guestsToSave = newGuests !== undefined ? newGuests : guests;
+                const confirmedToSave = newConfirmedIds !== undefined ? newConfirmedIds : confirmedPlayerIds;
+                const mensalidadeToSave = newMensalidade !== undefined ? newMensalidade : mensalidadeValue;
+                const diariaToSave = newDiaria !== undefined ? newDiaria : diariaValue;
+                const absentToSave = newAbsentIds !== undefined ? newAbsentIds : absentCommissionIds;
+                const monthlyStatsToSave = newMonthlyStats !== undefined ? newMonthlyStats : monthlyStats;
+                const babaCountToSave = newBabaCount !== undefined ? newBabaCount : babaCount;
+                const highlightsToSave = newHighlights !== undefined ? newHighlights : highlights;
+
+                const statePayload = {
+                    players: newPlayers !== undefined ? newPlayers : players,
+                    finances: prunedFinances,
+                    lastDraw: currentDraw,
+                    matchHistory: historyToSave,
+                    showDaySummary: summaryToSave,
+                    guests: guestsToSave,
+                    confirmedPlayerIds: confirmedToSave,
+                    mensalidadeValue: mensalidadeToSave,
+                    diariaValue: diariaToSave,
+                    absentCommissionIds: absentToSave,
+                    accessHistory: prunedAccessHistory,
+                    monthlyStats: monthlyStatsToSave,
+                    babaCount: babaCountToSave,
+                    highlights: highlightsToSave
+                };
+
+                // CRITICAL SAFETY GUARD: Prevent overwriting existing list with empty data if we previously had data
+                const localBackup = loadFromLocalBackup();
+                if (localBackup && localBackup.players && localBackup.players.length > 3 && (!statePayload.players || statePayload.players.length === 0)) {
+                    console.error("Tentativa de sobrescrever dados com lista vazia bloqueada por segurança.");
+                    return;
+                }
+
+                // Atualiza o backup local imediatamente para que o usuário não perca dados em caso de queda súbita
+                saveToLocalBackup(statePayload);
+
+                try {
                     const response = await fetch(API_URL, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
                             'X-Master-Key': MASTER_KEY
                         },
-                        body: JSON.stringify({ 
-                            players: newPlayers, 
-                            finances: prunedFinances,
-                            lastDraw: currentDraw,
-                            matchHistory: historyToSave,
-                            showDaySummary: summaryToSave,
-                            guests: guestsToSave,
-                            confirmedPlayerIds: confirmedToSave,
-                            mensalidadeValue: mensalidadeToSave,
-                            diariaValue: diariaToSave,
-                            absentCommissionIds: absentToSave,
-                            accessHistory: prunedAccessHistory,
-                            monthlyStats: monthlyStatsToSave,
-                            babaCount: babaCountToSave,
-                            highlights: highlightsToSave
-                        })
+                        body: JSON.stringify(statePayload)
                     });
 
                     if (!response.ok) {
                         const errorData = await response.json();
                         throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
                     }
+                    setIsOffline(false);
                 } catch (error) {
-                    console.error("Erro ao salvar dados:", error);
-                    alert("Erro ao salvar dados: " + error.message);
+                    console.error("Erro ao salvar remotamente:", error);
+                    setIsOffline(true);
+                    console.warn("Alterações salvas temporariamente em backup local.");
                 }
-            };
+            }
+
+            // Sincronização automática quando a internet voltar
+            useEffect(() => {
+                const handleOnline = () => {
+                    console.log("Conexão online detectada! Sincronizando dados...");
+                    setIsOffline(false);
+                    const backup = loadFromLocalBackup();
+                    if (backup && dataLoadedRef.current) {
+                        saveData(
+                            backup.players,
+                            backup.finances,
+                            backup.lastDraw,
+                            backup.matchHistory,
+                            backup.showDaySummary,
+                            backup.guests,
+                            backup.confirmedPlayerIds,
+                            backup.mensalidadeValue,
+                            backup.diariaValue,
+                            backup.absentCommissionIds,
+                            backup.accessHistory,
+                            undefined,
+                            undefined,
+                            backup.monthlyStats,
+                            backup.babaCount,
+                            backup.highlights
+                        );
+                    }
+                };
+                window.addEventListener('online', handleOnline);
+                return () => window.removeEventListener('online', handleOnline);
+            }, [players, finances, matchHistory, guests, confirmedPlayerIds, mensalidadeValue, diariaValue, absentCommissionIds, accessHistory, monthlyStats, babaCount, highlights]);
 
             // Timer Logic
             useEffect(() => {
@@ -1840,6 +1940,12 @@
 
             return (
                 <div className="bg-zinc-50 text-zinc-900 min-h-screen pb-24">
+                    {isOffline && (
+                        <div className="bg-amber-600 text-white text-xs font-medium py-2 px-4 sticky top-0 z-[100] flex items-center justify-center gap-2 shadow-sm">
+                            <Icon name="wifi-off" size={14} className="text-white animate-pulse" />
+                            <span>Modo Offline: Alterações salvas localmente e sincronizadas ao reconectar.</span>
+                        </div>
+                    )}
                     {/* Header */}
                     {(currentTab !== 'home' || isAdminMode) && (
                         <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
